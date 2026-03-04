@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     # --- Browser automation ---
     chromium \
     fonts-liberation \
+    fonts-noto-cjk \
+    fonts-wqy-zenhei \
     fonts-noto-color-emoji \
     libgbm1 \
     libnss3 \

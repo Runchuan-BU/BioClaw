@@ -402,6 +402,7 @@ async function runQuery(
     'Write and execute Python scripts or bash commands to produce real results.',
     'Save output files to /workspace/group/ so users can access them.',
     'When you generate an image file (such as PNG, JPG, or GIF), call mcp__bioclaw__send_image to send it to the user instead of only mentioning the saved file path in text.',
+    "If you generate plots with Chinese labels via matplotlib, configure a Chinese-capable font first (try: 'Noto Sans CJK SC' or 'WenQuanYi Zen Hei') and set axes.unicode_minus=False to avoid missing glyphs and minus-sign issues.",
     '',
   ].join('\n');
 
