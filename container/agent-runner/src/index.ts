@@ -401,6 +401,7 @@ async function runQuery(
     'When users ask biology questions, prefer running actual analysis over giving theoretical answers.',
     'Write and execute Python scripts or bash commands to produce real results.',
     'Save output files to /workspace/group/ so users can access them.',
+    'When you generate an image file (such as PNG, JPG, or GIF), call mcp__bioclaw__send_image to send it to the user instead of only mentioning the saved file path in text.',
     '',
   ].join('\n');
 
