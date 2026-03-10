@@ -220,34 +220,10 @@ In any WhatsApp group where BioClaw is connected, simply message:
 
 ## Second Quick Start
 
-Install from GitHub:
-
-```bash
-git clone https://github.com/Runchuan-BU/BioClaw.git
-cd BioClaw
-npm install
-docker build -t bioclaw-agent:latest container/
-```
-
-If you want the bot name to be OpenClaw, set:
-
-```bash
-export ASSISTANT_NAME=OpenClaw
-```
-
 Just send the message to OpenClaw:
 
 ```text
-@OpenClaw BLAST this sequence against nr: ATGCGATCGATCG...
-```
-
-### Group Management
-
-```bash
-npx tsx scripts/manage-groups.ts list         # Show registered groups
-npx tsx scripts/manage-groups.ts available    # Show all discovered groups
-npx tsx scripts/manage-groups.ts register     # Register a new group (interactive)
-npx tsx scripts/manage-groups.ts remove <jid> # Remove a group
+install https://github.com/Runchuan-BU/BioClaw
 ```
 
 See the [ExampleTask](ExampleTask/ExampleTask.md) document for 6 ready-to-use demo prompts with expected outputs.
