@@ -238,6 +238,46 @@ The bioinformatics tool suite and domain-specific skills — including sequence 
 | **scanpy** | Single-cell RNA-seq analysis |
 | **pysam** | SAM/BAM file access from Python |
 
+## Quick Start
+
+### Prerequisites
+
+- macOS or Linux
+- Node.js 20+
+- Docker Desktop
+- Anthropic API key
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/Runchuan-BU/BioClaw.git
+cd BioClaw
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your Anthropic API key
+
+# Build the agent Docker image
+docker build -t bioclaw-agent:latest container/
+
+# Start BioClaw (scan the QR code with WhatsApp on first run)
+npm start
+```
+
+### Usage
+
+In any WhatsApp group where BioClaw is connected, simply message:
+
+```
+@Bioclaw <your request>
+```
+
+See the [ExampleTask](ExampleTask/ExampleTask.md) document for 6 ready-to-use demo prompts with expected outputs.
+
 ## Project Structure
 
 ```
