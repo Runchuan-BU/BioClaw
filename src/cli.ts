@@ -70,7 +70,17 @@ function readSecrets(): Record<string, string> {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    if (['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(key) && value) {
+    if ([
+      'ANTHROPIC_API_KEY',
+      'CLAUDE_CODE_OAUTH_TOKEN',
+      'MODEL_PROVIDER',
+      'OPENROUTER_API_KEY',
+      'OPENROUTER_BASE_URL',
+      'OPENROUTER_MODEL',
+      'OPENAI_COMPATIBLE_API_KEY',
+      'OPENAI_COMPATIBLE_BASE_URL',
+      'OPENAI_COMPATIBLE_MODEL',
+    ].includes(key) && value) {
       secrets[key] = value;
     }
   }

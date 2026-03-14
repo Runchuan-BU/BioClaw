@@ -13,12 +13,13 @@ import qrcode from 'qrcode-terminal';
 import readline from 'readline';
 
 import makeWASocket, {
-  Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
+
+import { getWhatsAppBrowser } from './platform.js';
 
 const AUTH_DIR = './store/auth';
 const QR_FILE = './store/qr-data.txt';
@@ -74,7 +75,7 @@ async function connectSocket(phoneNumber?: string): Promise<void> {
     ...(version ? { version } : {}),
     printQRInTerminal: false,
     logger,
-    browser: Browsers.macOS('Chrome'),
+    browser: getWhatsAppBrowser('Chrome'),
   });
 
   if (usePairingCode && phoneNumber && !pairingCodeRequested) {
