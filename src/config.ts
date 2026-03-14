@@ -1,12 +1,27 @@
+import { loadEnvFile } from './env.js';
+import { getHomeDir } from './platform.js';
 import path from 'path';
+
+loadEnvFile();
 
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Bioclaw';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
+export const ENABLE_WHATSAPP = process.env.ENABLE_WHATSAPP !== 'false';
+export const ENABLE_LOCAL_WEB = process.env.ENABLE_LOCAL_WEB === 'true';
+export const LOCAL_WEB_HOST = process.env.LOCAL_WEB_HOST || '127.0.0.1';
+export const LOCAL_WEB_PORT = parseInt(process.env.LOCAL_WEB_PORT || '3210', 10);
+export const LOCAL_WEB_GROUP_JID =
+  process.env.LOCAL_WEB_GROUP_JID || 'local-web@local.web';
+export const LOCAL_WEB_GROUP_NAME =
+  process.env.LOCAL_WEB_GROUP_NAME || 'Local Web Chat';
+export const LOCAL_WEB_GROUP_FOLDER =
+  process.env.LOCAL_WEB_GROUP_FOLDER || 'local-web';
+export const LOCAL_WEB_SECRET = process.env.LOCAL_WEB_SECRET || '';
 
 // Absolute paths needed for container mounts
 const PROJECT_ROOT = process.cwd();
-const HOME_DIR = process.env.HOME || '/Users/user';
+const HOME_DIR = getHomeDir();
 
 // Mount security: allowlist stored OUTSIDE project root, never mounted into containers
 export const MOUNT_ALLOWLIST_PATH = path.join(

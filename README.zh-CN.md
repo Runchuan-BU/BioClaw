@@ -41,6 +41,10 @@ BioClaw 将常见的生物信息学任务带到聊天界面中。研究者可以
 
 ## 快速开始
 
+> 说明：当前仓库中已经实现的消息通道是 WhatsApp。文档中的 QQ / 飞书截图展示的是扩展方向，不代表仓库里已经内置了可直接运行的 QQ / 飞书通道。
+
+> 现在也支持一个更适合 Windows 用户的本地网页聊天入口。若你在中国、或者暂时不想接 WhatsApp，可直接走 `HTTP webhook + 本地网页聊天`。
+
 ### 环境要求
 
 - macOS 或 Linux
@@ -109,6 +113,10 @@ npm run dev
 ```text
 @Bioclaw <你的请求>
 ```
+
+如果你在 Windows 上、或者暂时不想通过 WhatsApp 使用，请先看 [docs/WINDOWS.zh-CN.md](docs/WINDOWS.zh-CN.md)。当前最稳妥的方式是 `WSL2 + Docker Desktop + npm run cli`。
+
+如果你想直接在浏览器里聊天，请在 `.env` 中设置 `ENABLE_WHATSAPP=false` 和 `ENABLE_LOCAL_WEB=true`，再执行 `npm run dev`，最后打开 [http://127.0.0.1:3210](http://127.0.0.1:3210)。
 
 ## 频道配置
 
@@ -186,6 +194,8 @@ install https://github.com/Runchuan-BU/BioClaw
 </div>
 
 更多任务示例见 [ExampleTask/ExampleTask.md](ExampleTask/ExampleTask.md)。
+
+> 注意：上面的 QQ / 飞书图片目前是产品展示示例，不是仓库内现成可启用的接入实现。
 
 ## 系统架构
 
