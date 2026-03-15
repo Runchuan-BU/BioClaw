@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, STORE_DIR } from './config.js';
-import { NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog } from './types.js';
+import { ContainerConfig, NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog } from './types.js';
 
 let db: Database.Database;
 
@@ -393,6 +393,14 @@ export function updateTaskAfterRun(
   ).run(nextRun, now, lastResult, nextRun, id);
 }
 
+export function getTaskRunLogs(taskId: string, limit = 20): TaskRunLog[] {
+  return db
+    .prepare(
+      'SELECT * FROM task_run_logs WHERE task_id = ? ORDER BY run_at DESC LIMIT ?',
+    )
+    .all(taskId, limit) as TaskRunLog[];
+}
+
 export function logTaskRun(log: TaskRunLog): void {
   db.prepare(
     `
@@ -452,6 +460,21 @@ export function getAllSessions(): Record<string, string> {
 
 // --- Registered group accessors ---
 
+function parseConfigBlob(raw: string | null): { containerConfig?: ContainerConfig; agentType?: string; notifyUser?: string } {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    // New format: { containerConfig, agentType }
+    if ('containerConfig' in parsed || 'agentType' in parsed) {
+      return parsed;
+    }
+    // Old format: containerConfig directly
+    return { containerConfig: parsed };
+  } catch {
+    return {};
+  }
+}
+
 export function getRegisteredGroup(
   jid: string,
 ): (RegisteredGroup & { jid: string }) | undefined {
@@ -469,16 +492,17 @@ export function getRegisteredGroup(
       }
     | undefined;
   if (!row) return undefined;
+  const { containerConfig, agentType, notifyUser } = parseConfigBlob(row.container_config);
   return {
     jid: row.jid,
     name: row.name,
     folder: row.folder,
     trigger: row.trigger_pattern,
     added_at: row.added_at,
-    containerConfig: row.container_config
-      ? JSON.parse(row.container_config)
-      : undefined,
+    containerConfig,
     requiresTrigger: row.requires_trigger === null ? undefined : row.requires_trigger === 1,
+    agentType: agentType as 'claude' | 'minimax' | 'qwen' | undefined,
+    notifyUser,
   };
 }
 
@@ -486,6 +510,9 @@ export function setRegisteredGroup(
   jid: string,
   group: RegisteredGroup,
 ): void {
+  const configBlob = (group.containerConfig || group.agentType || group.notifyUser)
+    ? JSON.stringify({ containerConfig: group.containerConfig, agentType: group.agentType, notifyUser: group.notifyUser })
+    : null;
   db.prepare(
     `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -495,7 +522,7 @@ export function setRegisteredGroup(
     group.folder,
     group.trigger,
     group.added_at,
-    group.containerConfig ? JSON.stringify(group.containerConfig) : null,
+    configBlob,
     group.requiresTrigger === undefined ? 1 : group.requiresTrigger ? 1 : 0,
   );
 }
@@ -514,15 +541,16 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   }>;
   const result: Record<string, RegisteredGroup> = {};
   for (const row of rows) {
+    const { containerConfig, agentType, notifyUser } = parseConfigBlob(row.container_config);
     result[row.jid] = {
       name: row.name,
       folder: row.folder,
       trigger: row.trigger_pattern,
       added_at: row.added_at,
-      containerConfig: row.container_config
-        ? JSON.parse(row.container_config)
-        : undefined,
+      containerConfig,
       requiresTrigger: row.requires_trigger === null ? undefined : row.requires_trigger === 1,
+      agentType: agentType as 'claude' | 'minimax' | 'qwen' | undefined,
+      notifyUser,
     };
   }
   return result;
@@ -581,4 +609,32 @@ function migrateJsonState(): void {
       setRegisteredGroup(jid, group);
     }
   }
+}
+
+// --- Dashboard stats ---
+
+export interface ActivityStats {
+  messages: Array<{ day: string; cnt: number }>;
+  tasks: Array<{ day: string; total: number; success: number; avg_ms: number }>;
+  taskTotals: { total: number; success: number; avg_ms: number; max_ms: number };
+}
+
+export function getActivityStats(days: number): ActivityStats {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const messages = db.prepare(
+    `SELECT date(timestamp) as day, COUNT(*) as cnt FROM messages WHERE timestamp > ? GROUP BY day ORDER BY day`,
+  ).all(since) as Array<{ day: string; cnt: number }>;
+  const tasks = db.prepare(
+    `SELECT date(run_at) as day, COUNT(*) as total, SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) as success, CAST(AVG(duration_ms) AS INTEGER) as avg_ms FROM task_run_logs WHERE run_at > ? GROUP BY day ORDER BY day`,
+  ).all(since) as Array<{ day: string; total: number; success: number; avg_ms: number }>;
+  const taskTotals = db.prepare(
+    `SELECT COUNT(*) as total, SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) as success, CAST(AVG(duration_ms) AS INTEGER) as avg_ms, CAST(MAX(duration_ms) AS INTEGER) as max_ms FROM task_run_logs WHERE run_at > ?`,
+  ).get(since) as { total: number; success: number; avg_ms: number; max_ms: number } | undefined;
+  return { messages, tasks, taskTotals: taskTotals || { total: 0, success: 0, avg_ms: 0, max_ms: 0 } };
+}
+
+export function getGroupMessageStats(): Array<{ chat_jid: string; msg_count: number; last_msg: string }> {
+  return db.prepare(
+    `SELECT chat_jid, COUNT(*) as msg_count, MAX(timestamp) as last_msg FROM messages GROUP BY chat_jid`,
+  ).all() as Array<{ chat_jid: string; msg_count: number; last_msg: string }>;
 }

@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BioClaw Dashboard</title>
+<style>
+:root{--bg:#0f1117;--surface:#1a1f2e;--surface2:#0d1117;--border:#2d3748;--text:#e2e8f0;--muted:#718096;--accent:#63b3ed;--accent2:#4a90d9;--success-bg:#276749;--success-fg:#9ae6b4;--warn-bg:#744210;--warn-fg:#fbd38d;--danger-bg:#742a2a}
+body.light{--bg:#f0f4f8;--surface:#fff;--surface2:#f7f9fc;--border:#e2e8f0;--text:#1a202c;--muted:#718096;--accent:#3182ce;--accent2:#2b6cb0;--success-bg:#c6f6d5;--success-fg:#276749;--warn-bg:#fefcbf;--warn-fg:#744210;--danger-bg:#fed7d7}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:17px;font-weight:600;color:var(--text);flex-shrink:0}
+.stats{display:flex;gap:16px;flex-wrap:wrap}
+.stat{text-align:center;cursor:pointer}
+.stat .val{font-size:20px;font-weight:700;color:var(--accent)}
+.stat .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat:hover .lbl{color:var(--accent)}
+.header-controls{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap}
+.ctrl-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;transition:.15s}
+.ctrl-btn:hover{border-color:var(--accent);color:var(--accent)}
+.ctrl-btn.active{border-color:var(--accent);color:var(--accent)}
+select.ctrl-btn{appearance:none;padding-right:22px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23718096'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center}
+.alert-badge{display:inline-block;background:#9b2c2c;color:#fff;border-radius:9999px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:4px;vertical-align:middle}
+nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;gap:2px;overflow-x:auto}
+nav button{background:none;border:none;color:var(--muted);padding:9px 14px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:.15s;white-space:nowrap;flex-shrink:0}
+nav button:hover{color:var(--text)}
+nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.container{padding:20px;max-width:1400px}
+.tab{display:none}.tab.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+.card-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.card-header strong{font-size:14px;color:var(--text)}
+.pill{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:600}
+.pill.active{background:var(--success-bg);color:var(--success-fg)}
+.pill.paused{background:var(--warn-bg);color:var(--warn-fg)}
+.pill.completed,.pill.success{background:#2d3748;color:var(--muted)}
+.pill.error,.pill.failed{background:var(--danger-bg);color:#fc8181}
+.pill.claude{background:#322659;color:#b794f4}
+.pill.minimax{background:#1a365d;color:#90cdf4}
+.pill.qwen{background:#1d4044;color:#81e6d9}
+.meta{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.8}
+.meta span{margin-right:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{border-bottom:1px solid var(--border)}
+th{text-align:left;padding:8px 12px;color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+td{padding:8px 12px;border-bottom:1px solid var(--surface2);vertical-align:top;color:var(--text)}
+tr:last-child td{border-bottom:none}
+.prompt-cell{max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;transition:.15s}
+.btn:hover{border-color:var(--accent)}
+.btn.danger{background:var(--danger-bg);border-color:#9b2c2c;color:#fc8181}
+.btn.danger:hover{background:#9b2c2c}
+.btn.success{background:var(--success-bg);border-color:#276749;color:var(--success-fg)}
+.refresh-bar{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:13px;color:var(--muted)}
+.refresh-bar button{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px}
+#log-container{background:var(--surface2);border:1px solid var(--border);border-radius:8px;height:580px;overflow-y:auto;padding:12px;font-family:'JetBrains Mono','Fira Code',monospace;font-size:11px;line-height:1.6}
+.log-line{white-space:pre-wrap;word-break:break-all;color:var(--muted);padding:1px 0;border-bottom:1px solid rgba(128,128,128,.05)}
+.log-line.error{color:#fc8181}.log-line.warn{color:#f6ad55}
+.log-controls{display:flex;gap:12px;margin-bottom:12px;align-items:center;flex-wrap:wrap}
+.log-controls label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer}
+.log-controls input[type=checkbox]{accent-color:var(--accent)}
+.empty{color:var(--border);font-size:13px;text-align:center;padding:32px}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;min-width:400px;max-width:640px;max-height:80vh;overflow-y:auto;width:90vw}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:16px;color:var(--text);display:flex;justify-content:space-between;align-items:center}
+.modal pre{background:var(--surface2);border-radius:6px;padding:12px;font-size:11px;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:200px;overflow-y:auto;margin-top:8px}
+.modal-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:0}
+.modal .card{margin-bottom:8px}
+/* Models */
+.model-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:24px}
+.model-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px}
+.model-card h3{font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px}
+.model-provider{font-size:12px;color:var(--muted);margin-bottom:12px}
+.model-specs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+.spec{background:var(--surface2);border-radius:6px;padding:8px 10px}
+.spec .slbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.spec .sval{font-size:13px;font-weight:600;color:var(--text);margin-top:2px}
+.test-area{margin-top:12px}
+.test-area input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;margin-bottom:8px}
+.test-area input:focus{outline:none;border-color:var(--accent2)}
+.test-result{background:var(--surface2);border-radius:6px;padding:10px;font-size:12px;color:var(--muted);min-height:40px;white-space:pre-wrap;word-break:break-all}
+/* Skills */
+.skills-search{display:flex;gap:10px;margin-bottom:16px}
+.skills-search input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px}
+.skills-search input:focus{outline:none;border-color:var(--accent2)}
+.skills-filter{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.filter-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:4px 12px;border-radius:9999px;cursor:pointer;font-size:12px;transition:.15s}
+.filter-btn:hover,.filter-btn.active{background:var(--accent2);border-color:var(--accent2);color:#fff}
+.skill-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.skill-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px}
+.skill-item .sname{font-size:13px;font-weight:600;color:var(--text);font-family:monospace}
+.skill-item .sdesc{font-size:11px;color:var(--muted);margin-top:4px}
+.skill-item .scat{font-size:10px;color:var(--accent2);margin-top:6px;font-weight:600;text-transform:uppercase}
+.section-title{font-size:14px;font-weight:600;color:var(--muted);margin:20px 0 10px;display:flex;align-items:center;gap:8px}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+/* Stats tab */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center}
+.stat-card .sv{font-size:28px;font-weight:700;color:var(--accent)}
+.stat-card .sl{font-size:11px;color:var(--muted);text-transform:uppercase;margin-top:4px}
+.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px}
+.chart-wrap h4{font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:500}
+.chart-inner{display:flex;align-items:flex-end;gap:4px;height:100px;overflow-x:auto}
+.bar-group{display:flex;flex-direction:column;align-items:center;flex-shrink:0;min-width:28px}
+.bar{border-radius:3px 3px 0 0;transition:.2s;cursor:default;min-height:2px}
+.bar.msg{background:var(--accent)}
+.bar.task-ok{background:var(--success-fg)}
+.bar.task-fail{background:#fc8181}
+.bar-lbl{font-size:9px;color:var(--muted);margin-top:4px;text-align:center;white-space:nowrap}
+.stats-period{display:flex;gap:6px;margin-bottom:16px}
+.period-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px}
+.period-btn.active{background:var(--accent2);border-color:var(--accent2);color:#fff}
+/* Alerts tab */
+.alert-rule{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.alert-rule .ar-name{font-size:13px;font-weight:600;color:var(--text);flex:1}
+.alert-rule .ar-meta{font-size:11px;color:var(--muted)}
+.alert-firing{background:#2d1111;border:1px solid #9b2c2c;border-radius:8px;padding:12px;margin-bottom:10px}
+.alert-firing .af-title{font-size:13px;font-weight:600;color:#fc8181;margin-bottom:6px}
+.alert-firing .af-item{font-size:12px;color:#feb2b2;padding:2px 0}
+.form-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.form-row label{font-size:12px;color:var(--muted);flex-shrink:0}
+.form-row input,.form-row select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);font-size:12px}
+.form-row input:focus,.form-row select:focus{outline:none;border-color:var(--accent)}
+/* Groups msg stat */
+.group-msg-stat{font-size:11px;color:var(--accent);margin-top:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#x1F9EC; BioClaw</h1>
+  <div class="stats">
+    <div class="stat" onclick="showTabByName('groups')"><div class="val" id="s-groups">-</div><div class="lbl" data-i18n="Groups">Groups</div></div>
+    <div class="stat" onclick="showTabByName('tasks')"><div class="val" id="s-tasks">-</div><div class="lbl" data-i18n="Tasks">Tasks</div></div>
+    <div class="stat" onclick="showTabByName('models')"><div class="val" id="s-models">-</div><div class="lbl" data-i18n="Models">Models</div></div>
+    <div class="stat" onclick="showTabByName('skills')"><div class="val" id="s-skills">-</div><div class="lbl" data-i18n="Skills">Skills</div></div>
+    <div class="stat" onclick="showTabByName('containers')"><div class="val" id="s-containers">-</div><div class="lbl" data-i18n="Containers">Containers</div></div>
+    <div class="stat" onclick="showTabByName('logs')"><div class="val" id="s-chats">-</div><div class="lbl" data-i18n="Chats">Chats</div></div>
+  </div>
+  <div class="header-controls">
+    <select class="ctrl-btn" id="refresh-select" onchange="setRefreshInterval(this.value)" title="Auto-refresh interval">
+      <option value="0">⏸ Manual</option>
+      <option value="10000">↺ 10s</option>
+      <option value="30000" selected>↺ 30s</option>
+      <option value="60000">↺ 1min</option>
+      <option value="300000">↺ 5min</option>
+    </select>
+    <button class="ctrl-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+    <button class="ctrl-btn" id="lang-btn" onclick="toggleLang()" title="Toggle language">EN</button>
+  </div>
+</header>
+<nav>
+  <button id="nav-groups" class="active" onclick="showTab('groups',this)" data-i18n="Groups">Groups</button>
+  <button id="nav-tasks" onclick="showTab('tasks',this)" data-i18n="Tasks">Tasks</button>
+  <button id="nav-stats" onclick="showTab('stats',this)" data-i18n="Stats">Stats</button>
+  <button id="nav-models" onclick="showTab('models',this)" data-i18n="Models">Models</button>
+  <button id="nav-skills" onclick="showTab('skills',this)" data-i18n="Skills">Skills</button>
+  <button id="nav-containers" onclick="showTab('containers',this)" data-i18n="Containers">Containers</button>
+  <button id="nav-alerts" onclick="showTab('alerts',this)" data-i18n="Alerts">Alerts</button>
+  <button id="nav-logs" onclick="showTab('logs',this)" data-i18n="Logs">Logs</button>
+</nav>
+<div class="container">
+
+  <!-- Groups -->
+  <div id="tab-groups" class="tab active">
+    <div class="refresh-bar">
+      <span data-i18n="Registered Groups">Registered Groups</span>
+      <button onclick="loadGroups()">&#x21bb; <span data-i18n="Refresh">Refresh</span></button>
+    </div>
+    <div id="groups-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- Tasks -->
+  <div id="tab-tasks" class="tab">
+    <div class="refresh-bar">
+      <span data-i18n="Scheduled Tasks">Scheduled Tasks</span>
+      <button onclick="loadTasks()">&#x21bb; <span data-i18n="Refresh">Refresh</span></button>
+    </div>
+    <div id="tasks-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- Stats -->
+  <div id="tab-stats" class="tab">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;color:var(--muted)" data-i18n="Activity Statistics">Activity Statistics</span>
+      <div class="stats-period">
+        <button class="period-btn" onclick="setStatsPeriod(7,this)">7d</button>
+        <button class="period-btn active" onclick="setStatsPeriod(14,this)">14d</button>
+        <button class="period-btn" onclick="setStatsPeriod(30,this)">30d</button>
+      </div>
+    </div>
+    <div id="stats-summary" class="stats-grid"></div>
+    <div class="chart-wrap">
+      <h4 data-i18n="Messages per Day">Messages per Day</h4>
+      <div class="chart-inner" id="chart-messages"></div>
+    </div>
+    <div class="chart-wrap">
+      <h4 data-i18n="Task Runs per Day">Task Runs per Day</h4>
+      <div class="chart-inner" id="chart-tasks"></div>
+    </div>
+    <div class="chart-wrap">
+      <h4 data-i18n="Avg Response Time (ms)">Avg Response Time (ms)</h4>
+      <div class="chart-inner" id="chart-duration"></div>
+    </div>
+  </div>
+
+  <!-- Models -->
+  <div id="tab-models" class="tab">
+    <div class="refresh-bar">
+      <span data-i18n="Configured Models">Configured Models</span>
+      <button onclick="loadModels()">&#x21bb; <span data-i18n="Refresh">Refresh</span></button>
+    </div>
+    <div id="models-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- Skills -->
+  <div id="tab-skills" class="tab">
+    <div class="skills-search">
+      <input type="text" id="skill-search" placeholder="Search skills..." oninput="filterSkills()">
+    </div>
+    <div class="skills-filter" id="skill-filters"></div>
+    <div id="skills-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- Containers -->
+  <div id="tab-containers" class="tab">
+    <div class="refresh-bar">
+      <span data-i18n="Running Containers">Running Containers</span>
+      <button onclick="loadContainers()">&#x21bb; <span data-i18n="Refresh">Refresh</span></button>
+    </div>
+    <div id="containers-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- Alerts -->
+  <div id="tab-alerts" class="tab">
+    <div id="alerts-firing"></div>
+    <div class="refresh-bar" style="margin-top:8px">
+      <span data-i18n="Alert Rules">Alert Rules</span>
+      <button onclick="loadAlerts()">&#x21bb; <span data-i18n="Refresh">Refresh</span></button>
+    </div>
+    <div id="alerts-rules-list"></div>
+    <div class="card" style="margin-top:16px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px" data-i18n="Add Rule">Add Rule</div>
+      <div class="form-row">
+        <label data-i18n="Name">Name</label>
+        <input type="text" id="alert-name" placeholder="e.g. Daily check" style="flex:1">
+        <label data-i18n="Type">Type</label>
+        <select id="alert-type">
+          <option value="group_silent" data-i18n="Group Silent">Group Silent</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label data-i18n="Threshold (hours)">Threshold (hours)</label>
+        <input type="number" id="alert-hours" value="24" min="1" max="168" style="width:80px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="alert-enabled" checked style="accent-color:var(--accent)">
+          <span data-i18n="Enabled">Enabled</span>
+        </label>
+        <button class="btn success" onclick="addAlertRule()">+ <span data-i18n="Add">Add</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logs -->
+  <div id="tab-logs" class="tab">
+    <div class="log-controls">
+      <label><input type="checkbox" id="log-autoscroll" checked> <span data-i18n="Auto-scroll">Auto-scroll</span></label>
+      <label><input type="checkbox" id="log-errors"> <span data-i18n="Errors only">Errors only</span></label>
+      <button class="btn" onclick="document.getElementById('log-container').innerHTML=''">
+        <span data-i18n="Clear">Clear</span>
+      </button>
+    </div>
+    <div id="log-container"></div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3><span id="modal-title"></span><button class="modal-close" onclick="closeModal()">&#x2715;</button></h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ---- i18n ----
+var LANG = localStorage.getItem('bc-lang') || 'en';
+var I18N = {
+  zh: {
+    'Groups':'群组','Tasks':'任务','Models':'模型','Skills':'技能','Containers':'容器','Chats':'会话',
+    'Stats':'统计','Alerts':'告警','Logs':'日志',
+    'Registered Groups':'已注册群组','Scheduled Tasks':'计划任务','Configured Models':'已配置模型',
+    'Running Containers':'运行中容器','Activity Statistics':'活动统计','Messages per Day':'每日消息量',
+    'Task Runs per Day':'每日任务执行次数','Avg Response Time (ms)':'平均响应时间(ms)',
+    'Alert Rules':'告警规则','Add Rule':'新增规则','Name':'名称','Type':'类型',
+    'Group Silent':'群组静默','Threshold (hours)':'阈值(小时)','Enabled':'启用','Add':'添加',
+    'Auto-scroll':'自动滚动','Errors only':'仅错误','Clear':'清空','Refresh':'刷新',
+    'Total Runs':'总执行次数','Success Rate':'成功率','Avg Duration':'平均耗时',
+    'Max Duration':'最长耗时','Total Messages':'总消息数','No data':'暂无数据',
+    'No registered groups':'暂无注册群组','No scheduled tasks':'暂无计划任务',
+    'No running containers':'无运行中容器','No models configured':'未配置模型',
+    'No skills match':'无匹配技能','No alert rules':'暂无告警规则',
+    'No alerts firing':'当前无告警','Alerts firing':'告警触发',
+    'Last msg':'最后消息','messages':'条消息','trigger':'触发词','added':'添加时间',
+    'custom container config':'自定义容器配置','Group Silent - no message for':'群组静默 - 已沉默',
+    'hours':'小时','Delete':'删除','Pause':'暂停','Resume':'恢复','Logs':'日志'
+  },
+  en: {}
+};
+function t(key) {
+  if (LANG === 'zh' && I18N.zh[key]) return I18N.zh[key];
+  return key;
+}
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(function(el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  document.getElementById('lang-btn').textContent = LANG === 'zh' ? 'EN' : '中';
+}
+function toggleLang() {
+  LANG = LANG === 'zh' ? 'en' : 'zh';
+  localStorage.setItem('bc-lang', LANG);
+  applyI18n();
+}
+
+// ---- Theme ----
+var THEME = localStorage.getItem('bc-theme') || 'dark';
+function applyTheme() {
+  document.body.classList.toggle('light', THEME === 'light');
+  document.getElementById('theme-btn').textContent = THEME === 'light' ? '🌙' : '☀️';
+}
+function toggleTheme() {
+  THEME = THEME === 'light' ? 'dark' : 'light';
+  localStorage.setItem('bc-theme', THEME);
+  applyTheme();
+}
+
+// ---- Auto-refresh ----
+var _refreshTimer = null;
+var _refreshInterval = 30000;
+function setRefreshInterval(ms) {
+  _refreshInterval = parseInt(ms, 10);
+  if (_refreshTimer) clearInterval(_refreshTimer);
+  if (_refreshInterval > 0) {
+    _refreshTimer = setInterval(function() {
+      loadStats();
+      if (currentTab === 'groups') loadGroups();
+      else if (currentTab === 'tasks') loadTasks();
+      else if (currentTab === 'containers') loadContainers();
+      else if (currentTab === 'stats') loadActivityStats();
+      else if (currentTab === 'alerts') loadAlerts();
+    }, _refreshInterval);
+  }
+}
+
+// ---- Core ----
+var currentTab = 'groups';
+var logSource = null;
+var _groupMsgStats = {};
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtTime(iso) {
+  if (!iso) return '-';
+  try { return new Date(iso).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}).replace(/\//g,'-'); }
+  catch(e) { return String(iso).slice(0,19).replace('T',' '); }
+}
+function fmtDur(ms) {
+  if (!ms) return '-';
+  if (ms < 1000) return ms + 'ms';
+  if (ms < 60000) return (ms/1000).toFixed(1) + 's';
+  return (ms/60000).toFixed(1) + 'min';
+}
+function pill(cls, text) {
+  return '<span class="pill ' + esc(cls) + '">' + esc(text) + '</span>';
+}
+
+function showTabByName(name) {
+  var btn = document.getElementById('nav-' + name);
+  if (btn) showTab(name, btn);
+}
+
+function showTab(name, btn) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'logs') initLogs();
+  else if (name === 'groups') loadGroups();
+  else if (name === 'tasks') loadTasks();
+  else if (name === 'containers') loadContainers();
+  else if (name === 'models') loadModels();
+  else if (name === 'skills') loadSkills();
+  else if (name === 'stats') loadActivityStats();
+  else if (name === 'alerts') loadAlerts();
+}
+
+function loadStats() {
+  fetch('/api/stats').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('s-groups').textContent = d.registeredGroups;
+    document.getElementById('s-tasks').textContent = d.activeTasks + '/' + d.totalTasks;
+    document.getElementById('s-chats').textContent = d.totalChats;
+  }).catch(function(){});
+  fetch('/api/containers').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('s-containers').textContent = d.length;
+  }).catch(function(){});
+  fetch('/api/models').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('s-models').textContent = d.length;
+  }).catch(function(){});
+  fetch('/api/skills').then(function(r){return r.json();}).then(function(d){
+    var total=(d.agentTools?d.agentTools.length:0)+(d.bioCliTools?d.bioCliTools.length:0)+(d.pythonLibs?d.pythonLibs.length:0)+(d.containerSkills?d.containerSkills.length:0);
+    document.getElementById('s-skills').textContent = total;
+  }).catch(function(){});
+  // Check alerts firing count
+  fetch('/api/alerts/status').then(function(r){return r.json();}).then(function(d){
+    var alertBtn = document.getElementById('nav-alerts');
+    var existing = alertBtn.querySelector('.alert-badge');
+    if (existing) existing.remove();
+    if (d.firing && d.firing.length > 0) {
+      alertBtn.innerHTML = alertBtn.textContent + '<span class="alert-badge">' + d.firing.length + '</span>';
+    }
+  }).catch(function(){});
+}
+
+// ---- Groups ----
+function loadGroups() {
+  var el = document.getElementById('groups-list');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  Promise.all([
+    fetch('/api/groups').then(function(r){return r.json();}),
+    fetch('/api/groups/stats').then(function(r){return r.json();}).catch(function(){return [];})
+  ]).then(function(results) {
+    var groups = results[0];
+    var msgStats = results[1];
+    _groupMsgStats = {};
+    (msgStats||[]).forEach(function(s){ _groupMsgStats[s.chat_jid] = s; });
+    var entries = Object.keys(groups);
+    if (entries.length === 0) { el.innerHTML = '<div class="empty">' + t('No registered groups') + '</div>'; return; }
+    var html = '';
+    entries.forEach(function(jid) {
+      var g = groups[jid];
+      var agent = g.agentType || 'claude';
+      var ms = _groupMsgStats[jid];
+      html += '<div class="card">';
+      html += '<div class="card-header"><strong>' + esc(g.name) + '</strong>' + pill(agent, agent);
+      if (g.requiresTrigger === false) html += pill('active', 'no-trigger');
+      html += '</div>';
+      html += '<div class="meta">';
+      html += '<span>&#x1F4C1; ' + esc(g.folder) + '</span>';
+      html += '<span>&#x1F4CB; ' + esc(jid) + '</span>';
+      html += '<span>' + t('trigger') + ': <code>' + esc(g.trigger) + '</code></span>';
+      html += '<span>' + t('added') + ': ' + fmtTime(g.added_at) + '</span>';
+      html += '</div>';
+      if (ms) {
+        html += '<div class="group-msg-stat">&#x1F4AC; ' + ms.msg_count + ' ' + t('messages') + ' &nbsp;&#x1F551; ' + t('Last msg') + ': ' + fmtTime(ms.last_msg) + '</div>';
+      }
+      if (g.containerConfig) html += '<div class="meta" style="color:var(--accent);margin-top:4px">&#x2699;&#xFE0F; ' + t('custom container config') + '</div>';
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  }).catch(function(e){ el.innerHTML = '<div class="empty">Error: ' + esc(e.message) + '</div>'; });
+}
+
+// ---- Tasks ----
+function loadTasks() {
+  var el = document.getElementById('tasks-list');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  fetch('/api/tasks').then(function(r){return r.json();}).then(function(tasks){
+    if (tasks.length === 0) { el.innerHTML = '<div class="empty">' + t('No scheduled tasks') + '</div>'; return; }
+    var html = '<table><thead><tr><th>ID</th><th>' + t('Groups') + '</th><th>Prompt</th><th>Schedule</th><th>Next Run</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+    tasks.forEach(function(tk){
+      html += '<tr>';
+      html += '<td style="font-family:monospace;font-size:11px;color:var(--muted)">' + esc(tk.id.slice(-8)) + '</td>';
+      html += '<td>' + esc(tk.group_folder) + '</td>';
+      html += '<td class="prompt-cell" title="' + esc(tk.prompt) + '">' + esc(tk.prompt) + '</td>';
+      html += '<td><span style="font-size:11px">' + esc(tk.schedule_type) + ': </span><code style="font-size:11px">' + esc(tk.schedule_value) + '</code></td>';
+      html += '<td style="font-size:11px;color:var(--muted)">' + fmtTime(tk.next_run) + '</td>';
+      html += '<td>' + pill(tk.status, tk.status) + '</td>';
+      html += '<td class="actions">';
+      if (tk.status === 'active') {
+        html += '<button class="btn" onclick="taskAction(\'' + esc(tk.id) + '\',\'pause\')">' + t('Pause') + '</button>';
+      } else {
+        html += '<button class="btn success" onclick="taskAction(\'' + esc(tk.id) + '\',\'resume\')">' + t('Resume') + '</button>';
+      }
+      html += '<button class="btn" onclick="showTaskLogs(\'' + esc(tk.id) + '\')">' + t('Logs') + '</button>';
+      html += '<button class="btn danger" onclick="taskAction(\'' + esc(tk.id) + '\',\'delete\')">' + t('Delete') + '</button>';
+      html += '</td></tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }).catch(function(e){ el.innerHTML = '<div class="empty">Error: ' + esc(e.message) + '</div>'; });
+}
+
+function taskAction(id, action) {
+  if (action === 'delete' && !confirm('Delete task ' + id + '?')) return;
+  var method = action === 'delete' ? 'DELETE' : 'PUT';
+  var url = action === 'delete' ? '/api/tasks/' + id : '/api/tasks/' + id + '/' + action;
+  fetch(url, {method:method}).then(function(){ loadTasks(); loadStats(); }).catch(function(e){ alert('Error: ' + e.message); });
+}
+
+function showTaskLogs(taskId) {
+  document.getElementById('modal-title').textContent = 'Task Logs: ' + taskId.slice(-12);
+  document.getElementById('modal-body').innerHTML = 'Loading...';
+  document.getElementById('modal').classList.add('open');
+  fetch('/api/task-logs/' + taskId).then(function(r){return r.json();}).then(function(logs){
+    if (logs.length === 0) { document.getElementById('modal-body').innerHTML = '<div class="empty">No run history</div>'; return; }
+    var html = '';
+    logs.forEach(function(l){
+      html += '<div class="card">';
+      html += '<div class="card-header"><strong>' + fmtTime(l.run_at) + '</strong>' + pill(l.status, l.status) + '<span style="font-size:11px;color:var(--muted)">' + fmtDur(l.duration_ms) + '</span></div>';
+      if (l.result) html += '<pre>' + esc(l.result.slice(0,500)) + '</pre>';
+      if (l.error) html += '<pre style="color:#fc8181">' + esc(l.error.slice(0,300)) + '</pre>';
+      html += '</div>';
+    });
+    document.getElementById('modal-body').innerHTML = html;
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML = '<div class="empty">Error: ' + esc(e.message) + '</div>'; });
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+// ---- Containers ----
+function loadContainers() {
+  var el = document.getElementById('containers-list');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  fetch('/api/containers').then(function(r){return r.json();}).then(function(containers){
+    if (containers.length === 0) { el.innerHTML = '<div class="empty">' + t('No running containers') + '</div>'; return; }
+    var html = '<table><thead><tr><th>Name</th><th>Image</th><th>Status</th><th>Running For</th></tr></thead><tbody>';
+    containers.forEach(function(c){
+      html += '<tr><td style="font-family:monospace;font-size:12px">' + esc(c.name) + '</td>';
+      html += '<td style="color:var(--muted);font-size:12px">' + esc(c.image) + '</td>';
+      html += '<td>' + pill('active', c.status) + '</td>';
+      html += '<td style="font-size:12px;color:var(--muted)">' + esc(c.running) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }).catch(function(e){ el.innerHTML = '<div class="empty">Error: ' + esc(e.message) + '</div>'; });
+}
+
+// ---- Logs ----
+function initLogs() {
+  if (logSource) return;
+  var el = document.getElementById('log-container');
+  logSource = new EventSource('/api/logs');
+  logSource.onmessage = function(e) {
+    var line = JSON.parse(e.data);
+    var errorsOnly = document.getElementById('log-errors').checked;
+    var isError = line.indexOf('"level":50') >= 0 || line.indexOf('"level":60') >= 0;
+    var isWarn = line.indexOf('"level":40') >= 0;
+    if (errorsOnly && !isError) return;
+    var div = document.createElement('div');
+    div.className = 'log-line' + (isError?' error':isWarn?' warn':'');
+    try {
+      var parsed = JSON.parse(line);
+      var ts = parsed.time ? new Date(parsed.time).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '';
+      var lvl = parsed.level>=50?'ERROR':parsed.level>=40?'WARN':'INFO';
+      var msg = parsed.msg || '';
+      var extra = Object.keys(parsed).filter(function(k){return['time','level','pid','hostname','msg'].indexOf(k)<0;}).map(function(k){return k+'='+JSON.stringify(parsed[k]);}).join(' ');
+      div.textContent = '['+ts+'] '+lvl+' '+msg+(extra?' '+extra:'');
+    } catch(err) { div.textContent = line; }
+    el.appendChild(div);
+    if (document.getElementById('log-autoscroll').checked) el.scrollTop = el.scrollHeight;
+    while (el.children.length > 1000) el.removeChild(el.firstChild);
+  };
+  logSource.onerror = function() {
+    var div = document.createElement('div');
+    div.className = 'log-line error';
+    div.textContent = '[SSE connection error - retrying...]';
+    el.appendChild(div);
+  };
+}
+
+// ---- Models ----
+function fmtCtx(n) {
+  if (n>=1000000) return (n/1000000).toFixed(0)+'M';
+  if (n>=1000) return (n/1000).toFixed(0)+'K';
+  return String(n);
+}
+function loadModels() {
+  var el = document.getElementById('models-list');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  fetch('/api/models').then(function(r){return r.json();}).then(function(models){
+    if (!models.length) { el.innerHTML = '<div class="empty">' + t('No models configured') + '</div>'; return; }
+    var html = '<div class="model-grid">';
+    models.forEach(function(m){
+      var agentBadge = m.agentCount?('<span style="font-size:11px;color:var(--success-fg)">'+m.agentCount+' agent'+(m.agentCount>1?'s':'')+'</span>'):'<span style="font-size:11px;color:var(--border)">unused</span>';
+      var configBadge = m.configured?pill('active','configured'):pill('paused','not configured');
+      var reasonBadge = m.reasoning?pill('claude','reasoning'):'<span class="pill" style="background:var(--surface2);color:var(--muted)">no reasoning</span>';
+      html += '<div class="model-card">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+      html += '<div><h3>'+esc(m.name)+'</h3><div class="model-provider">'+esc(m.provider)+'</div></div>';
+      html += '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">'+configBadge+agentBadge+'</div>';
+      html += '</div><div class="model-specs">';
+      html += '<div class="spec"><div class="slbl">Context</div><div class="sval">'+fmtCtx(m.contextWindow)+' tokens</div></div>';
+      html += '<div class="spec"><div class="slbl">Max Output</div><div class="sval">'+fmtCtx(m.maxOutput)+' tokens</div></div>';
+      html += '</div><div style="margin-bottom:10px">'+reasonBadge+'</div>';
+      html += '<div style="font-size:11px;color:var(--border);margin-bottom:10px;word-break:break-all">'+esc(m.endpoint)+'</div>';
+      if (m.id !== 'claude') {
+        html += '<div class="test-area">';
+        html += '<input type="text" id="test-prompt-'+esc(m.id)+'" placeholder="Test prompt..." value="Reply with exactly one word: ok">';
+        html += '<button class="btn" onclick="runModelTest(\''+esc(m.id)+'\')" style="width:100%;margin-bottom:8px">&#x25B6; Test</button>';
+        html += '<div class="test-result" id="test-result-'+esc(m.id)+'">—</div></div>';
+      } else {
+        html += '<div style="font-size:11px;color:var(--border)">Testing runs via container</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }).catch(function(e){ el.innerHTML = '<div class="empty">Error: ' + esc(e.message) + '</div>'; });
+}
+function runModelTest(modelId) {
+  var promptEl = document.getElementById('test-prompt-'+modelId);
+  var resultEl = document.getElementById('test-result-'+modelId);
+  var prompt = promptEl?promptEl.value||'Reply with exactly one word: ok':'ok';
+  resultEl.textContent = 'Testing...';
+  fetch('/api/models/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modelType:modelId,prompt:prompt})})
+    .then(function(r){return r.json();}).then(function(d){
+      var status = d.ok?'✓':'✗';
+      var tokens = (d.promptTokens||d.completionTokens)?(' | '+(d.promptTokens||0)+'+'+(d.completionTokens||0)+' tokens'):'';
+      resultEl.textContent = status+' '+d.durationMs+'ms'+tokens+'\n'+(d.response||'');
+    }).catch(function(e){ resultEl.textContent = '✗ '+e.message; });
+}
+
+// ---- Skills ----
+var _allSkillItems = [];
+function loadSkills() {
+  var el = document.getElementById('skills-list');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  fetch('/api/skills').then(function(r){return r.json();}).then(function(data){
+    _allSkillItems = [];
+    data.agentTools.forEach(function(s){ _allSkillItems.push(Object.assign({section:'Agent API Tools'},s)); });
+    data.bioCliTools.forEach(function(s){ _allSkillItems.push(Object.assign({section:'Bio CLI Tools (Container)'},s)); });
+    data.pythonLibs.forEach(function(s){ _allSkillItems.push(Object.assign({section:'Python Libraries'},s)); });
+    if (data.containerSkills) data.containerSkills.forEach(function(s){ _allSkillItems.push(Object.assign({section:'Container Skills'},s)); });
+    var cats = {};
+    _allSkillItems.forEach(function(s){ cats[s.category]=true; });
+    var filterHtml = '<button class="filter-btn active" onclick="setFilter(this,\'\')" data-cat="">All</button>';
+    Object.keys(cats).sort().forEach(function(c){ filterHtml+='<button class="filter-btn" onclick="setFilter(this,\''+esc(c)+'\')" data-cat="'+esc(c)+'">'+esc(c)+'</button>'; });
+    document.getElementById('skill-filters').innerHTML = filterHtml;
+    renderSkills(_allSkillItems);
+  }).catch(function(e){ el.innerHTML = '<div class="empty">Error: '+esc(e.message)+'</div>'; });
+}
+var _activeFilter='';
+function setFilter(btn,cat){ _activeFilter=cat; document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active');}); btn.classList.add('active'); filterSkills(); }
+function filterSkills(){
+  var q=(document.getElementById('skill-search').value||'').toLowerCase();
+  var items=_allSkillItems.filter(function(s){
+    var matchCat=!_activeFilter||s.category===_activeFilter;
+    var matchQ=!q||s.name.toLowerCase().includes(q)||s.description.toLowerCase().includes(q)||s.category.toLowerCase().includes(q);
+    return matchCat&&matchQ;
+  });
+  renderSkills(items);
+}
+function renderSkills(items){
+  var el=document.getElementById('skills-list');
+  if(!items.length){el.innerHTML='<div class="empty">'+t('No skills match')+'</div>';return;}
+  var sections={};
+  items.forEach(function(s){if(!sections[s.section])sections[s.section]=[];sections[s.section].push(s);});
+  var html='';
+  Object.keys(sections).forEach(function(sec){
+    html+='<div class="section-title">'+esc(sec)+' ('+sections[sec].length+')</div><div class="skill-grid">';
+    sections[sec].forEach(function(s){
+      html+='<div class="skill-item"><div class="sname">'+esc(s.name)+'</div><div class="sdesc">'+esc(s.description)+'</div><div class="scat">'+esc(s.category)+'</div></div>';
+    });
+    html+='</div>';
+  });
+  el.innerHTML=html;
+}
+
+// ---- Stats ----
+var _statsPeriod = 14;
+function setStatsPeriod(days, btn) {
+  _statsPeriod = days;
+  document.querySelectorAll('.period-btn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  loadActivityStats();
+}
+
+function barChart(containerId, data, maxVal, colorClass, labelKey, valKey) {
+  var el = document.getElementById(containerId);
+  if (!data || !data.length) { el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:20px">'+t('No data')+'</div>'; return; }
+  var max = maxVal || Math.max.apply(null, data.map(function(d){ return d[valKey]||0; })) || 1;
+  var html = '';
+  data.forEach(function(d) {
+    var val = d[valKey] || 0;
+    var h = Math.max(2, Math.round((val / max) * 96));
+    var lbl = (d[labelKey]||'').slice(5); // strip year
+    html += '<div class="bar-group">';
+    html += '<div class="bar '+colorClass+'" style="height:'+h+'px;width:24px" title="'+esc(lbl)+': '+val+'"></div>';
+    html += '<div class="bar-lbl">'+esc(lbl)+'</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function loadActivityStats() {
+  fetch('/api/activity?days=' + _statsPeriod).then(function(r){return r.json();}).then(function(d) {
+    // Summary cards
+    var tt = d.taskTotals || {};
+    var totalMsgs = d.messages.reduce(function(s,r){return s+(r.cnt||0);},0);
+    var summary = document.getElementById('stats-summary');
+    summary.innerHTML =
+      '<div class="stat-card"><div class="sv">'+totalMsgs+'</div><div class="sl">'+t('Total Messages')+'</div></div>' +
+      '<div class="stat-card"><div class="sv">'+(tt.total||0)+'</div><div class="sl">'+t('Total Runs')+'</div></div>' +
+      '<div class="stat-card"><div class="sv">'+(tt.total?Math.round((tt.success/tt.total)*100):'-')+'%</div><div class="sl">'+t('Success Rate')+'</div></div>' +
+      '<div class="stat-card"><div class="sv">'+fmtDur(tt.avg_ms)+'</div><div class="sl">'+t('Avg Duration')+'</div></div>' +
+      '<div class="stat-card"><div class="sv">'+fmtDur(tt.max_ms)+'</div><div class="sl">'+t('Max Duration')+'</div></div>';
+
+    // Fill in missing days for message chart
+    var msgMap = {};
+    d.messages.forEach(function(r){ msgMap[r.day] = r.cnt; });
+    var msgData = buildDayArray(_statsPeriod, msgMap, 'cnt');
+    barChart('chart-messages', msgData, null, 'msg', 'day', 'cnt');
+
+    // Task success bars
+    var taskSuccMap = {}, taskFailMap = {};
+    d.tasks.forEach(function(r){ taskSuccMap[r.day]=(r.success||0); taskFailMap[r.day]=(r.total||0)-(r.success||0); });
+    var taskData = buildDayArray(_statsPeriod, taskSuccMap, 'cnt');
+    barChart('chart-tasks', taskData, null, 'task-ok', 'day', 'cnt');
+
+    // Duration chart
+    var durMap = {};
+    d.tasks.forEach(function(r){ durMap[r.day] = r.avg_ms||0; });
+    var durData = buildDayArray(_statsPeriod, durMap, 'cnt');
+    barChart('chart-duration', durData, null, 'msg', 'day', 'cnt');
+  }).catch(function(){});
+}
+
+function buildDayArray(days, map, valKey) {
+  var result = [];
+  for (var i = days-1; i >= 0; i--) {
+    var d = new Date(Date.now() - i*86400000);
+    var day = d.toISOString().slice(0,10);
+    var obj = {day: day};
+    obj[valKey] = map[day] || 0;
+    result.push(obj);
+  }
+  return result;
+}
+
+// ---- Alerts ----
+var _alertRules = [];
+
+function loadAlerts() {
+  Promise.all([
+    fetch('/api/alerts').then(function(r){return r.json();}),
+    fetch('/api/alerts/status').then(function(r){return r.json();})
+  ]).then(function(results) {
+    var data = results[0];
+    var status = results[1];
+    _alertRules = data.rules || [];
+    renderAlertFiring(status.firing || []);
+    renderAlertRules();
+  }).catch(function(){});
+}
+
+function renderAlertFiring(firing) {
+  var el = document.getElementById('alerts-firing');
+  if (!firing.length) {
+    el.innerHTML = '<div style="color:var(--success-fg);font-size:13px;margin-bottom:8px">✓ '+t('No alerts firing')+'</div>';
+    return;
+  }
+  var html = '<div class="alert-firing"><div class="af-title">⚠ '+t('Alerts firing')+' ('+firing.length+')</div>';
+  firing.forEach(function(f){ html+='<div class="af-item">'+esc(f.rule)+' — '+esc(f.group)+'  ('+t('Last msg')+': '+fmtTime(f.lastMsg)+')</div>'; });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderAlertRules() {
+  var el = document.getElementById('alerts-rules-list');
+  if (!_alertRules.length) { el.innerHTML = '<div class="empty">'+t('No alert rules')+'</div>'; return; }
+  var html = '';
+  _alertRules.forEach(function(rule, idx) {
+    html += '<div class="alert-rule">';
+    html += '<div>';
+    html += '<div class="ar-name">'+esc(rule.name||rule.type)+'</div>';
+    html += '<div class="ar-meta">'+t('Group Silent - no message for')+' '+esc(rule.hours||24)+' '+t('hours')+'</div>';
+    html += '</div>';
+    html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--muted)">';
+    html += '<input type="checkbox"'+(rule.enabled?' checked':'')+' onchange="toggleAlertRule('+idx+',this.checked)" style="accent-color:var(--accent)"> '+t('Enabled');
+    html += '</label>';
+    html += '<button class="btn danger" onclick="deleteAlertRule('+idx+')">'+t('Delete')+'</button>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function saveAlerts() {
+  return fetch('/api/alerts', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rules:_alertRules})});
+}
+
+function addAlertRule() {
+  var name = document.getElementById('alert-name').value.trim() || 'Alert';
+  var type = document.getElementById('alert-type').value;
+  var hours = parseInt(document.getElementById('alert-hours').value,10) || 24;
+  var enabled = document.getElementById('alert-enabled').checked;
+  _alertRules.push({name:name, type:type, hours:hours, enabled:enabled});
+  saveAlerts().then(function(){ loadAlerts(); document.getElementById('alert-name').value=''; });
+}
+
+function toggleAlertRule(idx, enabled) {
+  _alertRules[idx].enabled = enabled;
+  saveAlerts().catch(function(){});
+}
+
+function deleteAlertRule(idx) {
+  _alertRules.splice(idx, 1);
+  saveAlerts().then(function(){ loadAlerts(); });
+}
+
+// ---- Init ----
+applyTheme();
+applyI18n();
+setRefreshInterval(30000);
+loadStats();
+loadGroups();
+</script>
+</body>
+</html>

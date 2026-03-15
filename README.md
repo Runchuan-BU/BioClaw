@@ -278,6 +278,29 @@ In any WhatsApp group where BioClaw is connected, simply message:
 
 See the [ExampleTask](ExampleTask/ExampleTask.md) document for 6 ready-to-use demo prompts with expected outputs.
 
+## Web Dashboard
+
+BioClaw includes a built-in web dashboard accessible at `http://localhost:3847` (or the port set by `DASHBOARD_PORT`).
+
+### Features
+
+| Tab | Description |
+|-----|-------------|
+| **Overview** | Live stats: message count, task runs, connected groups, registered models and skills |
+| **Groups** | All WhatsApp/Telegram groups with message count and last-activity time |
+| **Tasks** | Scheduled task list — create, pause, resume, and cancel tasks |
+| **Stats** | Activity charts (messages per day, task runs per day, success rate, avg/max duration) with 7d/14d/30d period selector |
+| **Alerts** | Alert rules based on group silence thresholds — see which rules are currently firing |
+| **Settings** | Environment configuration viewer |
+| **Models** | Configured AI models (Claude, MiniMax, Qwen) with auth status |
+| **Skills** | Installed agent skills |
+
+### UI controls
+
+- **Auto-refresh** — select refresh interval (off / 10s / 30s / 1min / 5min)
+- **Dark / Light theme** — toggle in the header, persisted in `localStorage`
+- **Language** — switch between Chinese (中文) and English (EN), persisted in `localStorage`
+
 ## Project Structure
 
 ```

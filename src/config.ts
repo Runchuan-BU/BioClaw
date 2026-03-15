@@ -1,11 +1,14 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Bioclaw';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
 // Absolute paths needed for container mounts
-const PROJECT_ROOT = process.cwd();
+// Use import.meta.url so paths are correct regardless of process.cwd()
+// dist/config.js -> ../../ -> project root
+const PROJECT_ROOT = path.resolve(fileURLToPath(import.meta.url), '../..');
 const HOME_DIR = process.env.HOME || '/Users/user';
 
 // Mount security: allowlist stored OUTSIDE project root, never mounted into containers
@@ -44,6 +47,9 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+export const TELEGRAM_ONLY = process.env.TELEGRAM_ONLY === "true";
+
 export const TRIGGER_PATTERN = new RegExp(
   `^@${escapeRegex(ASSISTANT_NAME)}\\b`,
   'i',
@@ -53,3 +59,13 @@ export const TRIGGER_PATTERN = new RegExp(
 // Uses system timezone by default
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// MiniMax (optional)
+export const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || '';
+export const MINIMAX_BASE_URL = process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.chat/v1';
+export const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'MiniMax-Text-01';
+
+// Qwen (optional)
+export const QWEN_API_BASE = process.env.QWEN_API_BASE || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+export const QWEN_AUTH_TOKEN = process.env.QWEN_AUTH_TOKEN || '';
+export const QWEN_MODEL = process.env.QWEN_MODEL || 'qwen-plus';

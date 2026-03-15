@@ -6,6 +6,7 @@ import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 import {
   CONTAINER_IMAGE,
@@ -62,7 +63,7 @@ function buildVolumeMounts(
 ): VolumeMount[] {
   const mounts: VolumeMount[] = [];
   const homeDir = getHomeDir();
-  const projectRoot = process.cwd();
+  const projectRoot = path.resolve(fileURLToPath(import.meta.url), '../..');
 
   if (isMain) {
     // Main gets the entire project root mounted
@@ -186,7 +187,7 @@ function buildVolumeMounts(
  * Secrets are never written to disk or mounted as files.
  */
 function readSecrets(): Record<string, string> {
-  const envFile = path.join(process.cwd(), '.env');
+  const envFile = path.join(path.resolve(fileURLToPath(import.meta.url), '../..'), '.env');
   if (!fs.existsSync(envFile)) return {};
 
   const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];

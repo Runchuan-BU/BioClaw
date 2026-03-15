@@ -55,6 +55,29 @@ install https://github.com/Runchuan-BU/BioClaw
 <img src="docs/images/qq/qq-deepseek-2.jpg" width="420">
 </div>
 
+## 网页控制台（Dashboard）
+
+BioClaw 内置网页控制台，启动后访问 `http://localhost:3847`（端口可通过 `DASHBOARD_PORT` 环境变量修改）。
+
+### 功能页签
+
+| 页签 | 说明 |
+|------|------|
+| **概览（Overview）** | 实时统计：消息数、任务运行次数、已连接群组数、已注册模型与技能数 |
+| **群组（Groups）** | 所有 WhatsApp/Telegram 群组，显示消息量和最后活跃时间 |
+| **任务（Tasks）** | 定时任务列表——新建、暂停、恢复、取消任务 |
+| **统计（Stats）** | 活动图表：每日消息量、每日任务运行量、成功率、平均/最大耗时；支持 7 天/14 天/30 天周期选择 |
+| **告警（Alerts）** | 基于群组静默阈值的告警规则，显示当前触发状态 |
+| **设置（Settings）** | 环境变量配置查看 |
+| **模型（Models）** | 已配置的 AI 模型（Claude、MiniMax、Qwen）及认证状态 |
+| **技能（Skills）** | 已安装的 Agent 技能列表 |
+
+### 界面控制
+
+- **自动刷新** — 选择刷新间隔（关闭 / 10 秒 / 30 秒 / 1 分钟 / 5 分钟）
+- **深色/浅色主题** — 点击标题栏图标切换，状态保存至 `localStorage`
+- **语言切换** — 中文 / English 切换，状态保存至 `localStorage`
+
 ## Demo Examples
 
 完整示例任务与截图见：
