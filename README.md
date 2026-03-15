@@ -288,7 +288,7 @@ BioClaw includes a built-in web dashboard accessible at `http://localhost:3847` 
 |-----|-------------|
 | **Overview** | Live stats: message count, task runs, connected groups, registered models and skills |
 | **Groups** | All WhatsApp/Telegram groups with message count and last-activity time |
-| **Tasks** | Scheduled task list — create, pause, resume, and cancel tasks |
+| **Tasks** | Scheduled task list — view, pause, resume, and cancel tasks |
 | **Stats** | Activity charts (messages per day, task runs per day, success rate, avg/max duration) with 7d/14d/30d period selector |
 | **Alerts** | Alert rules based on group silence thresholds — see which rules are currently firing |
 | **Settings** | Environment configuration viewer |
