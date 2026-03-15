@@ -60,141 +60,166 @@ Parse the research direction from the user's message, then execute all 5 stages 
 
 ---
 
-## STAGE 1 — PARALLEL LITERATURE SEARCH
+## STAGE 1 — PARALLEL LITERATURE SEARCH (3 MODELS)
 
-**Goal:** Cast a wide net across three complementary literature sources simultaneously.
+**Goal:** Cast a wide net using three models simultaneously — each with a different strength.
 
-Use the `Task` tool to launch **3 parallel search tasks**. Do NOT wait for one before starting the next — launch all three in the same message.
+| Role | Model | Responsibility |
+|------|-------|---------------|
+| Task A | **Claude** (you) | Real data fetch — PubMed API + bioRxiv API, runs Python scripts |
+| Task B | **MiniMax** | Biomedical knowledge analysis, Chinese literature context, cross-checking |
+| Task C | **Qwen** | Pathway landscape mapping, fast synthesis, regulatory network overview |
 
-### Task A — PubMed Mechanistic Search
+Use the `Task` tool to launch **all 3 tasks in the same message** (parallel). Do NOT wait for one before starting the next.
+
+---
+
+### Task A — Claude: Real Literature Fetch (PubMed + Preprints)
+
+This task runs actual API calls using the helper scripts in this skill.
 
 Prompt for Task A:
 ```
-You are a PubMed literature specialist. Search PubMed for papers about: {RESEARCH_DIRECTION}
+You are doing a real literature fetch for the bio-research-pipeline.
+Research direction: {RESEARCH_DIRECTION}
 
-Run the following Python script to fetch results:
+Step 1 — Locate skill scripts:
+SKILL_DIR=$(find ~/.claude/skills -name "SKILL.md" -path "*/bio-research-pipeline/*" | xargs dirname 2>/dev/null | head -1)
 
-```python
-from Bio import Entrez
-import json, sys
+Step 2 — Run PubMed fetch:
+python3 "$SKILL_DIR/scripts/pubmed-fetch" "{RESEARCH_DIRECTION}" --max 40 --years 5
 
-Entrez.email = "bioclaw-agent@research.ai"
+Step 3 — Run preprint fetch:
+python3 "$SKILL_DIR/scripts/preprint-fetch" "{RESEARCH_DIRECTION}" --max 25 --days 180
 
-# Build search query — include MeSH terms if applicable
-query = "{RESEARCH_DIRECTION}[Title/Abstract] AND (mechanism OR pathway OR signaling OR molecular)"
-handle = Entrez.esearch(db="pubmed", term=query, retmax=40, sort="relevance",
-                        datetype="pdat", mindate="2020", maxdate="2025")
-record = Entrez.read(handle)
-ids = record["IdList"]
+Step 4 — Synthesize into structured summary:
+- Key molecular mechanisms found
+- Key proteins/genes/pathways mentioned
+- Most significant recent findings (2023-2025)
+- Any contradictions or open debates
+- Top 5 most relevant papers with PMID/DOI
 
-# Fetch abstracts
-handle2 = Entrez.efetch(db="pubmed", id=",".join(ids[:30]), rettype="abstract", retmode="text")
-abstracts = handle2.read()
-print(abstracts[:15000])
+Output all results clearly labeled with section headers.
 ```
 
-Then summarize:
-1. Key molecular mechanisms mentioned
-2. Key proteins/genes involved
-3. Key signaling pathways implicated
-4. Most cited findings (appear in multiple papers)
-5. Contradictions or debates in the literature
+---
 
-Output as structured text with section headers.
-```
+### Task B — MiniMax: Biomedical Knowledge Analysis
 
-### Task B — Preprint Search (bioRxiv / medRxiv)
+This task calls MiniMax via `mcp__bioclaw__call_minimax`. MiniMax contributes its own training knowledge — particularly strong on Chinese biomedical literature, clinical context, and TCM-related pathways.
 
 Prompt for Task B:
 ```
-You are a preprint literature specialist. Find the latest cutting-edge preprints about: {RESEARCH_DIRECTION}
+Call mcp__bioclaw__call_minimax with this prompt:
 
-Step 1 — Search bioRxiv API:
-```python
-import requests, json
+system: "You are an expert biomedical research analyst with deep knowledge of molecular biology, disease mechanisms, and the latest research trends in both Western and Chinese scientific literature."
 
-topic = "{RESEARCH_DIRECTION}"
-# bioRxiv API — last 180 days
-url = f"https://api.biorxiv.org/details/biorxiv/2024-09-01/2025-03-15/0/json"
-r = requests.get(url, timeout=30)
-data = r.json()
+prompt: "Research direction: {RESEARCH_DIRECTION}
 
-# Filter by keyword relevance
-keywords = topic.lower().split()
-relevant = []
-for paper in data.get("collection", []):
-    title = paper.get("title", "").lower()
-    abstract = paper.get("abstract", "").lower()
-    if any(kw in title or kw in abstract for kw in keywords):
-        relevant.append({
-            "title": paper["title"],
-            "authors": paper.get("authors", ""),
-            "date": paper.get("date", ""),
-            "abstract": paper.get("abstract", "")[:500],
-            "doi": paper.get("doi", "")
-        })
+Please provide a comprehensive analysis covering:
 
-print(json.dumps(relevant[:20], indent=2, ensure_ascii=False))
+1. CURRENT STATE OF THE FIELD
+   - What is well-established about this topic?
+   - What are the 3-5 most important mechanistic insights from recent years?
+   - Which research groups/labs are leading this field?
+
+2. KEY MOLECULAR PLAYERS
+   - List the most important proteins, genes, and non-coding RNAs involved
+   - Describe their known roles and interactions
+   - Note any recently discovered players (2022-2025)
+
+3. DISEASE RELEVANCE
+   - Which diseases/conditions is this most relevant to?
+   - What is the current clinical/translational status?
+   - Any recent clinical trials or translational breakthroughs?
+
+4. KNOWLEDGE GAPS
+   - What are the most important unresolved questions?
+   - Where do different research groups disagree?
+   - What has been tried but failed, and why?
+
+5. EMERGING ANGLES
+   - What novel angles are researchers starting to explore?
+   - Any recent paradigm shifts in thinking about this topic?
+
+Provide specific, concrete information. Cite field knowledge accurately."
+
+After getting MiniMax's response, output it verbatim with the header: "=== MINIMAX ANALYSIS ==="
 ```
 
-Step 2 — Use WebSearch to find additional preprints:
-Search: "{RESEARCH_DIRECTION} site:biorxiv.org OR site:medrxiv.org 2024 2025"
+---
 
-Summarize:
-1. Emerging findings not yet in peer-reviewed journals
-2. Novel methodologies being applied
-3. Preliminary data suggesting new directions
-4. Discrepancies with established literature
+### Task C — Qwen: Pathway Landscape + Regulatory Network
 
-Output as structured text.
-```
-
-### Task C — Reviews + Pathway Databases
+This task calls Qwen via `mcp__bioclaw__call_qwen` AND runs the pathway-search script for real database data.
 
 Prompt for Task C:
 ```
-You are a pathway and review specialist. Map the known biology for: {RESEARCH_DIRECTION}
+You are mapping the pathway landscape for the bio-research-pipeline.
+Research direction: {RESEARCH_DIRECTION}
 
-Step 1 — Search for review articles:
-```python
-from Bio import Entrez
-import json
+Step 1 — Run real pathway database search:
+SKILL_DIR=$(find ~/.claude/skills -name "SKILL.md" -path "*/bio-research-pipeline/*" | xargs dirname 2>/dev/null | head -1)
+python3 "$SKILL_DIR/scripts/pathway-search" "{RESEARCH_DIRECTION}"
 
-Entrez.email = "bioclaw-agent@research.ai"
-query = "{RESEARCH_DIRECTION}[Title/Abstract] AND (Review[pt] OR systematic review OR meta-analysis)"
-handle = Entrez.esearch(db="pubmed", term=query, retmax=20, sort="relevance")
-record = Entrez.read(handle)
-ids = record["IdList"]
-handle2 = Entrez.efetch(db="pubmed", id=",".join(ids[:15]), rettype="abstract", retmode="text")
-print(handle2.read()[:10000])
+Step 2 — Call Qwen for pathway synthesis:
+Use mcp__bioclaw__call_qwen with:
+
+system: "You are a systems biology expert specializing in signaling pathway analysis and gene regulatory networks."
+
+prompt: "For the research topic: {RESEARCH_DIRECTION}
+
+Please map the complete biological pathway landscape:
+
+1. CORE PATHWAYS INVOLVED
+   - List and briefly describe each relevant pathway
+   - Explain how they interconnect for this topic
+
+2. REGULATORY HIERARCHY
+   - Upstream triggers / sensors
+   - Master regulators (transcription factors, kinases)
+   - Key effectors and their downstream targets
+   - Feedback and feedforward loops
+
+3. CROSSTALK POINTS
+   - Where do pathways intersect or antagonize each other?
+   - Which nodes are shared across multiple pathways?
+   - Potential compensatory mechanisms to be aware of
+
+4. CONTEXT-SPECIFIC REGULATION
+   - How does this regulation differ between cell types?
+   - Tissue-specific or disease-specific pathway alterations
+   - Known species differences (mouse vs human)
+
+5. THERAPEUTIC INTERVENTION POINTS
+   - Which nodes are most druggable?
+   - Existing drugs/inhibitors targeting these pathways
+   - Potential combination therapy rationale
+
+Be specific about molecule names and interaction types (phosphorylation, ubiquitination, transcriptional activation, etc.)"
+
+Output Qwen's response with header: "=== QWEN PATHWAY ANALYSIS ==="
+Then append the real database results from Step 1 with header: "=== DATABASE RESULTS ==="
 ```
 
-Step 2 — Query KEGG pathway API:
-```python
-import requests
+---
 
-# Search KEGG for relevant pathways
-topic_keywords = "{RESEARCH_DIRECTION}".split()[:3]
-for kw in topic_keywords:
-    r = requests.get(f"https://rest.kegg.jp/find/pathway/{kw}", timeout=15)
-    if r.status_code == 200 and r.text.strip():
-        print(f"KEGG pathways for '{kw}':")
-        print(r.text[:2000])
+**After launching all 3 tasks**, collect results:
 ```
-
-Step 3 — Use WebSearch to find Reactome pathway information:
-Search: "{RESEARCH_DIRECTION} Reactome pathway 2024"
-
-Synthesize:
-1. Established pathway map (which pathways are involved)
-2. Key regulatory nodes (master regulators, feedback loops)
-3. Known therapeutic targets in these pathways
-4. Gaps in current knowledge (explicitly stated in reviews)
-
-Output as structured text.
+taskA_result = TaskOutput(task_id_A)
+taskB_result = TaskOutput(task_id_B)
+taskC_result = TaskOutput(task_id_C)
 ```
+Wait for all 3 to complete before proceeding to Stage 2.
 
-**After launching all 3 tasks**, collect results with `TaskOutput` for each task ID. Wait for all 3 to complete.
+**Send a progress update to the user** via `mcp__bioclaw__send_message`:
+```
+"📚 文献检索完成（Claude + MiniMax + Qwen 三路并行）
+🔬 Claude: PubMed {N} 篇 + 预印本 {M} 篇
+🤖 MiniMax: 生物医学知识分析完成
+⚡ Qwen: 通路图谱梳理完成
+正在综合分析，生成假说..."
+```
 
 ---
 
