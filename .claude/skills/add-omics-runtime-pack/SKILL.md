@@ -1,12 +1,12 @@
 ---
 name: add-omics-runtime-pack
-description: Add a curated pack of eight high-signal omics runtime skills to a BioClaw installation. Use when the user wants stronger built-in guidance for common omics analyses inside agent containers without changing BioClaw source code. Creates runtime skills for scRNA preprocessing, cell annotation, ChIP-seq, ATAC-seq, differential expression, proteomics, metagenomics, and structural biology.
+description: Audit or refresh a curated pack of eight high-signal omics runtime skills in a BioClaw installation. Use when the user wants stronger built-in guidance for common omics analyses inside agent containers without changing BioClaw source code. Ensures the eight runtime skill folders exist under `container/skills/` with the expected flat file layout.
 disable-model-invocation: true
 ---
 
 # Add Omics Runtime Pack
 
-This skill adds eight strong runtime skills under `container/skills/` for common BioClaw analysis tasks.
+This skill verifies that eight strong runtime skills are present under `container/skills/` for common BioClaw analysis tasks.
 
 ## What This Adds
 
@@ -32,7 +32,7 @@ Each runtime skill must contain only root-level files:
 - Do not add Python packages, R packages, or other dependencies.
 - Do not add nested `references/` directories under `container/skills/<skill>/`.
 
-The contribution is delivered entirely as a skill, not as source-code changes.
+The contribution is delivered as runtime skill content plus this installer skill, without any source-code changes.
 
 ## Why The Runtime Skills Must Stay Flat
 
@@ -47,15 +47,15 @@ That means:
 
 So every installed runtime skill must be flat.
 
-## Bundled Sources
+## Runtime Skill Source Of Truth
 
-Use the bundled strong versions under:
+The runtime-ready versions now live directly in:
 
 ```text
-.claude/skills/add-omics-runtime-pack/references/runtime-pack/
+container/skills/
 ```
 
-The bundled pack already contains runtime-ready files with BioClaw-safe relative references.
+Treat those directories as the source of truth. Do not recreate alternate copies under `.claude/skills/`.
 
 ## Implementation Steps
 
@@ -86,7 +86,7 @@ If any target directory already exists, inspect it before changing anything.
 
 ### 2. Create Or Update The Eight Runtime Skill Directories
 
-For each skill listed below, create `container/skills/<skill>/` and copy the three bundled files exactly from the matching source directory under `.claude/skills/add-omics-runtime-pack/references/runtime-pack/<skill>/`.
+For each skill listed below, ensure `container/skills/<skill>/` exists and contains exactly the three required root-level files.
 
 | Runtime skill | Required files |
 |---|---|
@@ -99,7 +99,7 @@ For each skill listed below, create `container/skills/<skill>/` and copy the thr
 | `metagenomics` | `SKILL.md`, `technical_reference.md`, `commands_and_thresholds.md` |
 | `structural-biology` | `SKILL.md`, `technical_reference.md`, `commands_and_thresholds.md` |
 
-Do not invent alternate content unless the bundled files clearly conflict with the current repository state.
+Do not invent alternate content unless the committed runtime files clearly conflict with the current repository state.
 
 ### 3. Preserve The Runtime-Ready Shape
 
@@ -120,6 +120,8 @@ find container/skills -maxdepth 3 -type d -name references
 ```
 
 The second command should produce no output for the eight installed skills.
+
+Also confirm that no duplicate copy of the runtime pack remains under `.claude/skills/add-omics-runtime-pack/`.
 
 Also confirm no external-path residue remains:
 
