@@ -19,6 +19,18 @@ Built on the [NanoClaw](https://github.com/qwibitai/nanoclaw) architecture with 
 
 </div>
 
+## Skill Contribution Workflow
+
+New BioClaw-compatible skills are first contributed to [Bioclaw_Skills_Hub](https://github.com/zongtingwei/Bioclaw_Skills_Hub), where they can be iterated and tested before being promoted into the main BioClaw repository.
+
+If you want to contribute new skills, please submit them there first. Skills that prove useful and stable in practice may later be integrated into BioClaw itself.
+
+To get newly promoted skills and updates from BioClaw, pull the latest version of this repository:
+
+```bash
+git pull
+```
+
 ## Join WeChat Group
 
 Welcome to join our WeChat group to discuss and exchange ideas! Scan the QR code below to join:
