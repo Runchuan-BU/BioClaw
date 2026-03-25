@@ -12,6 +12,10 @@
 [![Paper](https://img.shields.io/badge/bioRxiv-STELLA-b31b1b.svg)](https://www.biorxiv.org/content/10.1101/2025.07.01.662467v2)
 [![arXiv](https://img.shields.io/badge/arXiv-2507.02004-b31b1b.svg)](https://arxiv.org/abs/2507.02004)
 
+<p align="center">
+  新的 BioClaw 兼容 skills 会先提交到 <a href="https://github.com/zongtingwei/Bioclaw_Skills_Hub">Bioclaw_Skills_Hub</a> 仓库，在那里先完成迭代和测试，再视效果同步到主 BioClaw 仓库中。如果你想贡献新的 skills，请优先提交到该仓库。经过验证、效果稳定的 skills，后续会逐步整合进 BioClaw。若想获取这些后续合入的 skills 和更新内容，请在本仓库中执行 <code>git pull</code>。
+</p>
+
 </div>
 
 ---
