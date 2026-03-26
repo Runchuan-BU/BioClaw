@@ -1,0 +1,45 @@
+#!/bin/bash
+# cluster-dispatch-pending — 扫描 pending 目录并提交待处理的 Slurm 作业
+# 用法: cluster-dispatch-pending
+#
+# 部署位置: /usr/local/bin/cluster-dispatch-pending
+# 依赖:
+#   - /usr/local/bin/cluster-submit
+#   - ~/.ssh/config 中配置 Host hpc-login
+
+set -euo pipefail
+
+QUEUE_DIR="${BIOCLAW_CLUSTER_QUEUE_DIR:-/mnt/lab-scratch/bioclaw/pending}"
+SUBMITTED_DIR="${BIOCLAW_CLUSTER_SUBMITTED_DIR:-/mnt/lab-scratch/bioclaw/submitted}"
+FAILED_DIR="${BIOCLAW_CLUSTER_FAILED_DIR:-/mnt/lab-scratch/bioclaw/failed}"
+
+mkdir -p "$QUEUE_DIR" "$SUBMITTED_DIR" "$FAILED_DIR"
+shopt -s nullglob
+
+for script in "$QUEUE_DIR"/*.sbatch; do
+  base="$(basename "$script")"
+  staging="${script}.submitting"
+  stderr_file="${staging}.stderr"
+
+  mv "$script" "$staging"
+
+  if submit_output="$(cluster-submit "$staging" 2>"$stderr_file")"; then
+    job_id="${submit_output%%;*}"
+
+    if [[ ! "$job_id" =~ ^[0-9]+$ ]]; then
+      echo "ERROR: unexpected sbatch output: $submit_output" >&2
+      mv "$staging" "$FAILED_DIR/$base"
+      mv "$stderr_file" "$FAILED_DIR/$base.stderr"
+      continue
+    fi
+
+    mv "$staging" "$SUBMITTED_DIR/$base"
+    printf '%s\n' "$job_id" > "$SUBMITTED_DIR/$base.jobid"
+    rm -f "$stderr_file"
+  else
+    mv "$staging" "$FAILED_DIR/$base"
+    if [[ -f "$stderr_file" ]]; then
+      mv "$stderr_file" "$FAILED_DIR/$base.stderr"
+    fi
+  fi
+done

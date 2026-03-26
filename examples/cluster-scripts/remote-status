@@ -1,0 +1,63 @@
+#!/bin/bash
+# remote-status — 查询普通云服务器上的远端执行状态
+# 用法: remote-status <run_id>
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: remote-status <run_id>" >&2
+  exit 1
+fi
+
+RUN_ID="$1"
+if [[ ! "$RUN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "ERROR: invalid run ID: $RUN_ID" >&2
+  exit 1
+fi
+
+REMOTE_HOST="${BIOCLAW_REMOTE_HOST:-remote-exec}"
+if [[ -n "${BIOCLAW_REMOTE_BASE_DIR:-}" ]]; then
+  REMOTE_BASE_EXPR="$(printf '%q' "$BIOCLAW_REMOTE_BASE_DIR")"
+else
+  REMOTE_BASE_EXPR='$HOME/bioclaw-remote'
+fi
+
+ssh "$REMOTE_HOST" "base_dir=${REMOTE_BASE_EXPR}; run_dir=\"\$base_dir/runs/${RUN_ID}\"; bash -s -- \"\$run_dir\" \"${RUN_ID}\"" <<'EOF'
+set -euo pipefail
+run_dir="$1"
+run_id="$2"
+
+if [[ ! -d "$run_dir" ]]; then
+  echo "ERROR: run not found: $run_id" >&2
+  exit 1
+fi
+
+pid=""
+[[ -f "$run_dir/pid" ]] && pid="$(cat "$run_dir/pid")"
+
+state="UNKNOWN"
+exit_code=""
+
+if [[ -f "$run_dir/exit_code" ]]; then
+  exit_code="$(cat "$run_dir/exit_code")"
+  if [[ "$exit_code" == "0" ]]; then
+    state="SUCCEEDED"
+  else
+    state="FAILED"
+  fi
+elif [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+  state="RUNNING"
+else
+  state="UNKNOWN"
+fi
+
+printf 'RUN_ID=%s\n' "$run_id"
+printf 'STATE=%s\n' "$state"
+[[ -n "$pid" ]] && printf 'PID=%s\n' "$pid"
+[[ -f "$run_dir/started_at" ]] && printf 'STARTED_AT=%s\n' "$(cat "$run_dir/started_at")"
+[[ -f "$run_dir/finished_at" ]] && printf 'FINISHED_AT=%s\n' "$(cat "$run_dir/finished_at")"
+[[ -n "$exit_code" ]] && printf 'EXIT_CODE=%s\n' "$exit_code"
+printf 'RUN_DIR=%s\n' "$run_dir"
+printf 'STDOUT_LOG=%s/stdout.log\n' "$run_dir"
+printf 'STDERR_LOG=%s/stderr.log\n' "$run_dir"
+EOF

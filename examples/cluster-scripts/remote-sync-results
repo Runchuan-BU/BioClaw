@@ -1,0 +1,21 @@
+#!/bin/bash
+# remote-sync-results — 从普通云服务器同步结果目录回本地
+# 用法: remote-sync-results <local_dir> [remote_results_dir]
+
+set -euo pipefail
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "Usage: remote-sync-results <local_dir> [remote_results_dir]" >&2
+  exit 1
+fi
+
+LOCAL_DIR="$1"
+REMOTE_HOST="${BIOCLAW_REMOTE_HOST:-remote-exec}"
+if [[ $# -eq 2 ]]; then
+  REMOTE_RESULTS_DIR="$2"
+else
+  REMOTE_RESULTS_DIR="${BIOCLAW_REMOTE_BASE_DIR:-~/bioclaw-remote}/results"
+fi
+
+mkdir -p "$LOCAL_DIR"
+rsync -avz --progress "${REMOTE_HOST}:${REMOTE_RESULTS_DIR}/" "$LOCAL_DIR/"

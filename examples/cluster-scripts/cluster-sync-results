@@ -1,0 +1,18 @@
+#!/bin/bash
+# cluster-sync-results — 将集群结果同步回本地目录
+# 用法: cluster-sync-results <remote_dir> <local_dir>
+#
+# 部署位置: /usr/local/bin/cluster-sync-results
+
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+  echo "Usage: cluster-sync-results <remote_dir> <local_dir>" >&2
+  exit 1
+fi
+
+REMOTE_DIR="$1"
+LOCAL_DIR="$2"
+
+mkdir -p "$LOCAL_DIR"
+rsync -avz --progress hpc-login:"$REMOTE_DIR/" "$LOCAL_DIR/"

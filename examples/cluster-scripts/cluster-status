@@ -1,0 +1,20 @@
+#!/bin/bash
+# cluster-status — 查询 HPC 作业状态
+# 用法: cluster-status [job_id]
+#   无参数: 列出当前用户所有作业
+#   有参数: 查询指定 job ID（运行中用 squeue，已完成用 sacct）
+#
+# 部署位置: /usr/local/bin/cluster-status
+
+set -euo pipefail
+
+if [[ $# -eq 0 ]]; then
+  ssh hpc-login "squeue -u \$USER --format='%.10i %.20j %.8T %.10M %.6D %R'"
+else
+  JOB_ID="$1"
+  if [[ ! "$JOB_ID" =~ ^[0-9_]+$ ]]; then
+    echo "ERROR: invalid job ID: $JOB_ID" >&2
+    exit 1
+  fi
+  ssh hpc-login "if squeue -j '$JOB_ID' --format='%.10i %.20j %.8T %.10M %.6D %R' 2>/dev/null | grep -q '$JOB_ID'; then squeue -j '$JOB_ID' --format='%.10i %.20j %.8T %.10M %.6D %R'; else sacct -j '$JOB_ID' --format=JobID,JobName,State,Elapsed,ExitCode -n; fi"
+fi

@@ -1,0 +1,47 @@
+#!/bin/bash
+# remote-dispatch-pending — 扫描 pending 目录并提交脚本到普通云服务器后台执行
+# 用法: remote-dispatch-pending
+#
+# 环境变量:
+#   BIOCLAW_REMOTE_QUEUE_DIR
+#   BIOCLAW_REMOTE_SUBMITTED_DIR
+#   BIOCLAW_REMOTE_FAILED_DIR
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REMOTE_SUBMIT_BIN="${BIOCLAW_REMOTE_SUBMIT_BIN:-$SCRIPT_DIR/remote-submit}"
+
+QUEUE_DIR="${BIOCLAW_REMOTE_QUEUE_DIR:-/mnt/lab-scratch/bioclaw/pending}"
+SUBMITTED_DIR="${BIOCLAW_REMOTE_SUBMITTED_DIR:-/mnt/lab-scratch/bioclaw/submitted}"
+FAILED_DIR="${BIOCLAW_REMOTE_FAILED_DIR:-/mnt/lab-scratch/bioclaw/failed}"
+
+mkdir -p "$QUEUE_DIR" "$SUBMITTED_DIR" "$FAILED_DIR"
+shopt -s nullglob
+
+for script in "$QUEUE_DIR"/*.sh "$QUEUE_DIR"/*.bash "$QUEUE_DIR"/*.sbatch; do
+  [[ -e "$script" ]] || continue
+  base="$(basename "$script")"
+  staging="${script}.submitting"
+  stderr_file="${staging}.stderr"
+
+  mv "$script" "$staging"
+
+  if run_id="$("$REMOTE_SUBMIT_BIN" "$staging" 2>"$stderr_file")"; then
+    if [[ ! "$run_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      echo "ERROR: unexpected run ID output: $run_id" >&2
+      mv "$staging" "$FAILED_DIR/$base"
+      mv "$stderr_file" "$FAILED_DIR/$base.stderr"
+      continue
+    fi
+
+    mv "$staging" "$SUBMITTED_DIR/$base"
+    printf '%s\n' "$run_id" > "$SUBMITTED_DIR/$base.runid"
+    rm -f "$stderr_file"
+  else
+    mv "$staging" "$FAILED_DIR/$base"
+    if [[ -f "$stderr_file" ]]; then
+      mv "$stderr_file" "$FAILED_DIR/$base.stderr"
+    fi
+  fi
+done

@@ -1,0 +1,26 @@
+#!/bin/bash
+# cluster-submit — 提交作业脚本到 HPC login node
+# 用法: cluster-submit <脚本路径>
+# 返回: 纯数字 Slurm job ID
+#
+# 部署位置: /usr/local/bin/cluster-submit
+# 权限: chmod +x，bioclaw 用户可执行
+# 依赖: ~/.ssh/config 中配置 Host hpc-login
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: cluster-submit <script_path>" >&2
+  exit 1
+fi
+
+SCRIPT="$1"
+
+if [[ ! -f "$SCRIPT" ]]; then
+  echo "ERROR: script not found: $SCRIPT" >&2
+  exit 1
+fi
+
+# 提交并规范化输出（某些 Slurm 环境会返回 "jobid;cluster"）
+submit_output="$(ssh hpc-login "sbatch --parsable" < "$SCRIPT")"
+printf '%s\n' "${submit_output%%;*}"

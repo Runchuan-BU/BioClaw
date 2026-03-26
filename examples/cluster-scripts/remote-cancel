@@ -1,0 +1,52 @@
+#!/bin/bash
+# remote-cancel — 取消普通云服务器上的远端执行任务
+# 用法: remote-cancel <run_id>
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: remote-cancel <run_id>" >&2
+  exit 1
+fi
+
+RUN_ID="$1"
+if [[ ! "$RUN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "ERROR: invalid run ID: $RUN_ID" >&2
+  exit 1
+fi
+
+REMOTE_HOST="${BIOCLAW_REMOTE_HOST:-remote-exec}"
+if [[ -n "${BIOCLAW_REMOTE_BASE_DIR:-}" ]]; then
+  REMOTE_BASE_EXPR="$(printf '%q' "$BIOCLAW_REMOTE_BASE_DIR")"
+else
+  REMOTE_BASE_EXPR='$HOME/bioclaw-remote'
+fi
+
+ssh "$REMOTE_HOST" "base_dir=${REMOTE_BASE_EXPR}; run_dir=\"\$base_dir/runs/${RUN_ID}\"; bash -s -- \"\$run_dir\" \"${RUN_ID}\"" <<'EOF'
+set -euo pipefail
+run_dir="$1"
+run_id="$2"
+
+if [[ ! -d "$run_dir" ]]; then
+  echo "ERROR: run not found: $run_id" >&2
+  exit 1
+fi
+
+if [[ ! -f "$run_dir/pid" ]]; then
+  echo "ERROR: pid file not found: $run_id" >&2
+  exit 1
+fi
+
+pid="$(cat "$run_dir/pid")"
+if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: invalid pid in run dir: $pid" >&2
+  exit 1
+fi
+
+if kill -0 "$pid" 2>/dev/null; then
+  kill "$pid"
+  printf 'CANCELLED=%s\n' "$run_id"
+else
+  printf 'ALREADY_STOPPED=%s\n' "$run_id"
+fi
+EOF

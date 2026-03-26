@@ -1,0 +1,33 @@
+{
+  "allowedRoots": [
+    {
+      "path": "/mnt/lab-data",
+      "allowReadWrite": false,
+      "description": "原始实验数据（只读）"
+    },
+    {
+      "path": "/mnt/lab-ref",
+      "allowReadWrite": false,
+      "description": "参考数据库，如 NCBI nr、UniProt、RefSeq（只读）"
+    },
+    {
+      "path": "/mnt/lab-results",
+      "allowReadWrite": true,
+      "description": "分析结果输出目录（读写，仅 main group 可写）"
+    },
+    {
+      "path": "/mnt/lab-scratch",
+      "allowReadWrite": true,
+      "description": "临时工作区，作业脚本暂存（读写，仅 main group 可写）"
+    }
+  ],
+  "blockedPatterns": [
+    "password",
+    "secret",
+    "token",
+    "private",
+    "passwd",
+    "shadow"
+  ],
+  "nonMainReadOnly": true
+}

@@ -1,0 +1,66 @@
+#!/bin/bash
+# remote-submit — 将本地脚本提交到普通云服务器后台执行
+# 用法: remote-submit <script_path>
+# 返回: run_id（用于 remote-status / remote-cancel）
+#
+# 依赖:
+#   - ~/.ssh/config 中配置 Host ${BIOCLAW_REMOTE_HOST:-remote-exec}
+#   - 远端允许通过 bash 执行脚本
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: remote-submit <script_path>" >&2
+  exit 1
+fi
+
+SCRIPT="$1"
+if [[ ! -f "$SCRIPT" ]]; then
+  echo "ERROR: script not found: $SCRIPT" >&2
+  exit 1
+fi
+
+REMOTE_HOST="${BIOCLAW_REMOTE_HOST:-remote-exec}"
+if [[ -n "${BIOCLAW_REMOTE_BASE_DIR:-}" ]]; then
+  REMOTE_BASE_EXPR="$(printf '%q' "$BIOCLAW_REMOTE_BASE_DIR")"
+else
+  REMOTE_BASE_EXPR='$HOME/bioclaw-remote'
+fi
+
+script_base="$(basename "$SCRIPT")"
+safe_base="$(printf '%s' "${script_base%.*}" | tr -cs 'A-Za-z0-9._-' '-')"
+random_suffix="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-${safe_base}-${random_suffix}"
+
+remote_run_dir="\$base_dir/runs/${run_id}"
+remote_script="\$base_dir/runs/${run_id}/script.sh"
+remote_wrapper="\$base_dir/runs/${run_id}/launcher.sh"
+
+ssh "$REMOTE_HOST" "base_dir=${REMOTE_BASE_EXPR}; mkdir -p \"\$base_dir/runs\" \"\$base_dir/results\" \"\$base_dir/logs\" \"${remote_run_dir}\""
+ssh "$REMOTE_HOST" "base_dir=${REMOTE_BASE_EXPR}; cat > \"${remote_script}\" && chmod +x \"${remote_script}\"" < "$SCRIPT"
+
+ssh "$REMOTE_HOST" "base_dir=${REMOTE_BASE_EXPR}; cat > \"${remote_wrapper}\" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+base_dir=${REMOTE_BASE_EXPR}
+run_dir=\"${remote_run_dir}\"
+script=\"${remote_script}\"
+printf '%s\n' \"\$(date -Is)\" > \"\$run_dir/started_at\"
+bash \"\$script\" > \"\$run_dir/stdout.log\" 2> \"\$run_dir/stderr.log\"
+status=\$?
+printf '%s\n' \"\$status\" > \"\$run_dir/exit_code\"
+printf '%s\n' \"\$(date -Is)\" > \"\$run_dir/finished_at\"
+exit \"\$status\"
+EOF
+chmod +x \"${remote_wrapper}\""
+
+remote_pid="$(
+  ssh "$REMOTE_HOST" "base_dir=${REMOTE_BASE_EXPR}; nohup bash \"${remote_wrapper}\" >/dev/null 2>&1 < /dev/null & pid=\$!; printf '%s\n' \"\$pid\" > \"${remote_run_dir}/pid\"; printf '%s\n' \"\$pid\""
+)"
+
+if [[ ! "$remote_pid" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: unexpected remote pid output: $remote_pid" >&2
+  exit 1
+fi
+
+printf '%s\n' "$run_id"
