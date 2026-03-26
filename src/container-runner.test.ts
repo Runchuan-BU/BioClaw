@@ -10,6 +10,7 @@ const OUTPUT_END_MARKER = '---BIOCLAW_OUTPUT_END---';
 vi.mock('./config.js', () => ({
   CONTAINER_IMAGE: 'bioclaw-agent:latest',
   CONTAINER_MAX_OUTPUT_SIZE: 10485760,
+  CONTAINER_RUNTIME: 'docker',
   CONTAINER_TIMEOUT: 1800000, // 30min
   DATA_DIR: '/tmp/bioclaw-test-data',
   GROUPS_DIR: '/tmp/bioclaw-test-groups',
