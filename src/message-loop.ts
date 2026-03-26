@@ -3,24 +3,20 @@
  */
 import {
   ASSISTANT_NAME,
-  MAIN_GROUP_FOLDER,
   POLL_INTERVAL,
-  TRIGGER_PATTERN,
 } from './config.js';
 import { getAllChats, getMessagesSince, getNewMessages } from './db/index.js';
 import { AvailableGroup } from './group-folder.js';
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
-import { formatMessages } from './router.js';
 import {
   getLastTimestamp,
   setLastTimestamp,
+  getAgentIdForChat,
   getRegisteredGroupsMap,
   getLastAgentTimestamp,
-  setLastAgentTimestampFor,
   saveState,
 } from './session-manager.js';
-import { NewMessage } from './types.js';
 
 let messageLoopRunning = false;
 
@@ -53,16 +49,20 @@ export function getAvailableGroups(): AvailableGroup[] {
 export function recoverPendingMessages(queue: GroupQueue): void {
   const registeredGroups = getRegisteredGroupsMap();
   const lastAgentTimestamp = getLastAgentTimestamp();
+  const queuedAgents = new Set<string>();
 
   for (const [chatJid, group] of Object.entries(registeredGroups)) {
     const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
     const pending = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
     if (pending.length > 0) {
+      const agentId = getAgentIdForChat(chatJid) || group.workspaceFolder || group.folder;
+      if (queuedAgents.has(agentId)) continue;
+      queuedAgents.add(agentId);
       logger.info(
-        { group: group.name, pendingCount: pending.length },
+        { group: group.name, agentId, pendingCount: pending.length },
         'Recovery: found unprocessed messages',
       );
-      queue.enqueueMessageCheck(chatJid);
+      queue.enqueueMessageCheck(agentId);
     }
   }
 }
@@ -82,7 +82,6 @@ export async function startMessageLoop(queue: GroupQueue): Promise<void> {
   while (true) {
     try {
       const registeredGroups = getRegisteredGroupsMap();
-      const lastAgentTimestamp = getLastAgentTimestamp();
       const jids = Object.keys(registeredGroups);
       const { messages, newTimestamp } = getNewMessages(
         jids,
@@ -96,53 +95,14 @@ export async function startMessageLoop(queue: GroupQueue): Promise<void> {
         setLastTimestamp(newTimestamp);
         saveState();
 
-        // Deduplicate by group
-        const messagesByGroup = new Map<string, NewMessage[]>();
+        const agentsWithMessages = new Set<string>();
         for (const msg of messages) {
-          const existing = messagesByGroup.get(msg.chat_jid);
-          if (existing) {
-            existing.push(msg);
-          } else {
-            messagesByGroup.set(msg.chat_jid, [msg]);
-          }
+          const agentId = getAgentIdForChat(msg.chat_jid);
+          if (agentId) agentsWithMessages.add(agentId);
         }
 
-        for (const [chatJid, groupMessages] of messagesByGroup) {
-          const group = registeredGroups[chatJid];
-          if (!group) continue;
-
-          const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
-          const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
-
-          if (needsTrigger) {
-            const hasTrigger = groupMessages.some((m) =>
-              TRIGGER_PATTERN.test(m.content.trim()),
-            );
-            if (!hasTrigger) continue;
-          }
-
-          const allPending = getMessagesSince(
-            chatJid,
-            lastAgentTimestamp[chatJid] || '',
-            ASSISTANT_NAME,
-          );
-          const messagesToSend =
-            allPending.length > 0 ? allPending : groupMessages;
-          const formatted = formatMessages(messagesToSend);
-
-          if (queue.sendMessage(chatJid, formatted)) {
-            logger.debug(
-              { chatJid, count: messagesToSend.length },
-              'Piped messages to active container',
-            );
-            setLastAgentTimestampFor(
-              chatJid,
-              messagesToSend[messagesToSend.length - 1].timestamp,
-            );
-            saveState();
-          } else {
-            queue.enqueueMessageCheck(chatJid);
-          }
+        for (const agentId of agentsWithMessages) {
+          queue.enqueueMessageCheck(agentId);
         }
       }
     } catch (err) {

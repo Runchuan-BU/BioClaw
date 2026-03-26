@@ -3,19 +3,30 @@
  */
 import { logger } from './logger.js';
 import {
+  ensureDefaultAgentForWorkspace,
+  getAllAgents,
+  getAllDefaultChatAgentBindings,
   getAllRegisteredGroups,
   getAllSessions,
   getRouterState,
   setRegisteredGroup,
   setRouterState,
   setSession,
+  setDefaultChatAgentBinding,
 } from './db/index.js';
-import { RegisteredGroup } from './types.js';
+import { AgentDefinition, RegisteredGroup } from './types.js';
 import { ensureGroupDir } from './group-folder.js';
+import {
+  getWorkspaceChatJids,
+  getWorkspaceFolder,
+  normalizeRegisteredGroup,
+} from './workspace.js';
 
 let lastTimestamp = '';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
+let agents: Record<string, AgentDefinition> = {};
+let chatAgentBindings: Record<string, string> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 
 export function getLastTimestamp(): string {
@@ -30,13 +41,40 @@ export function getSessions(): Record<string, string> {
   return sessions;
 }
 
-export function updateSession(groupFolder: string, sessionId: string): void {
-  sessions[groupFolder] = sessionId;
-  setSession(groupFolder, sessionId);
+export function updateSession(agentId: string, sessionId: string): void {
+  sessions[agentId] = sessionId;
+  setSession(agentId, sessionId);
 }
 
 export function getRegisteredGroupsMap(): Record<string, RegisteredGroup> {
   return registeredGroups;
+}
+
+export function getAgentsMap(): Record<string, AgentDefinition> {
+  return agents;
+}
+
+export function getAgentIdForChat(chatJid: string): string | undefined {
+  return chatAgentBindings[chatJid];
+}
+
+export function getAgentForChat(chatJid: string): AgentDefinition | undefined {
+  const agentId = getAgentIdForChat(chatJid);
+  return agentId ? agents[agentId] : undefined;
+}
+
+export function getWorkspaceFolderForAgent(agentId: string): string | undefined {
+  return agents[agentId]?.workspaceFolder;
+}
+
+export function getAgentWorkspaceFolder(agentId: string): string | undefined {
+  return getWorkspaceFolderForAgent(agentId);
+}
+
+export function getChatJidsForAgent(agentId: string): string[] {
+  return Object.entries(chatAgentBindings)
+    .filter(([, boundAgentId]) => boundAgentId === agentId)
+    .map(([chatJid]) => chatJid);
 }
 
 export function getLastAgentTimestamp(): Record<string, string> {
@@ -57,9 +95,30 @@ export function loadState(): void {
     lastAgentTimestamp = {};
   }
   sessions = getAllSessions();
-  registeredGroups = getAllRegisteredGroups();
+  registeredGroups = Object.fromEntries(
+    Object.entries(getAllRegisteredGroups()).map(([jid, group]) => [
+      jid,
+      normalizeRegisteredGroup(group),
+    ]),
+  );
+  agents = getAllAgents();
+  chatAgentBindings = getAllDefaultChatAgentBindings();
+
+  for (const [jid, group] of Object.entries(registeredGroups)) {
+    if (!chatAgentBindings[jid]) {
+      const workspaceFolder = getWorkspaceFolder(group);
+      const agentId = ensureDefaultAgentForWorkspace(workspaceFolder, group.added_at);
+      setDefaultChatAgentBinding(jid, agentId, group.added_at);
+      chatAgentBindings[jid] = agentId;
+    }
+  }
+  agents = getAllAgents();
+
   logger.info(
-    { groupCount: Object.keys(registeredGroups).length },
+    {
+      groupCount: Object.keys(registeredGroups).length,
+      agentCount: Object.keys(agents).length,
+    },
     'State loaded',
   );
 }
@@ -73,13 +132,35 @@ export function saveState(): void {
 }
 
 export function registerGroup(jid: string, group: RegisteredGroup): void {
-  registeredGroups[jid] = group;
-  setRegisteredGroup(jid, group);
-  ensureGroupDir(group.folder);
+  const normalized = normalizeRegisteredGroup(group);
+  registeredGroups[jid] = normalized;
+  setRegisteredGroup(jid, normalized);
+  const workspaceFolder = getWorkspaceFolder(normalized);
+  ensureGroupDir(workspaceFolder);
+  const agentId = ensureDefaultAgentForWorkspace(workspaceFolder, normalized.added_at);
+  const agent = getAllAgents()[agentId];
+  if (agent) agents[agentId] = agent;
+  setDefaultChatAgentBinding(jid, agentId, normalized.added_at);
+  chatAgentBindings[jid] = agentId;
   logger.info(
-    { jid, name: group.name, folder: group.folder },
+    {
+      jid,
+      name: normalized.name,
+      folder: normalized.folder,
+      workspaceFolder,
+      agentId,
+    },
     'Group registered',
   );
+}
+
+export function getWorkspaceFolderForChat(chatJid: string): string | undefined {
+  const group = registeredGroups[chatJid];
+  return group ? getWorkspaceFolder(group) : undefined;
+}
+
+export function getChatJidsForWorkspace(workspaceFolder: string): string[] {
+  return getWorkspaceChatJids(registeredGroups, workspaceFolder);
 }
 
 /** @internal - exported for testing */

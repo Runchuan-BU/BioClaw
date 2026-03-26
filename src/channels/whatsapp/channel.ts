@@ -25,6 +25,7 @@ import {
 import { logger } from '../../logger.js';
 import { getWhatsAppBrowser, notifyAuthRequired } from '../../platform.js';
 import { Channel, OnInboundMessage, OnChatMetadata, RegisteredGroup } from '../../types.js';
+import { getWorkspaceFolder } from '../../workspace.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -191,7 +192,11 @@ export class WhatsAppChannel implements Channel {
         }
 
         if (groups[chatJid]) {
-          const content = await this.buildInboundContent(chatJid, msg, groups[chatJid].folder);
+          const content = await this.buildInboundContent(
+            chatJid,
+            msg,
+            getWorkspaceFolder(groups[chatJid]),
+          );
           const isBotEcho =
             Boolean(msg.key.fromMe) &&
             content.trim().startsWith(`${ASSISTANT_NAME}:`);

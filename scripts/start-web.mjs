@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Start BioClaw with browser UI: Local Web + Lab trace on the same port.
- * Loads .env from project root, then forces ENABLE_LOCAL_WEB=true.
+ * Start BioClaw in web-only mode: Local Web + Lab trace on the same port.
+ * Loads .env from project root, then forces ENABLE_LOCAL_WEB=true and
+ * disables all other chat channels so the browser UI can be used in isolation.
  *
  * Usage (from repo root): npm run web
  */
@@ -26,6 +27,18 @@ if (!fs.existsSync(tsxCli)) {
 const env = {
   ...process.env,
   ENABLE_LOCAL_WEB: 'true',
+  ENABLE_WHATSAPP: 'false',
+  ENABLE_WECHAT: 'false',
+  DISABLE_WHATSAPP: '1',
+  QQ_APP_ID: '',
+  QQ_CLIENT_SECRET: '',
+  FEISHU_APP_ID: '',
+  FEISHU_APP_SECRET: '',
+  WECOM_BOT_ID: '',
+  WECOM_SECRET: '',
+  DISCORD_BOT_TOKEN: '',
+  SLACK_BOT_TOKEN: '',
+  SLACK_APP_TOKEN: '',
 };
 
 const host = env.LOCAL_WEB_HOST || 'localhost';

@@ -3,6 +3,7 @@
  * Top-level startup, shutdown, and wiring. All logic is delegated to sub-modules.
  */
 import 'dotenv/config';
+import { randomUUID } from 'crypto';
 
 import {
   ASSISTANT_NAME,
@@ -35,7 +36,9 @@ import { checkRuntime, cleanupOrphans } from './container-runtime.js';
 import { writeGroupsSnapshot, writeTasksSnapshot } from './group-folder.js';
 import {
   getAllTasks,
+  getAllChats,
   getMessagesSince,
+  getRecentMessagesForChats,
   initDatabase,
   storeMessage,
   storeChatMetadata,
@@ -53,6 +56,12 @@ import {
   updateSession,
   getLastAgentTimestamp,
   setLastAgentTimestampFor,
+  getAgentIdForChat,
+  getAgentWorkspaceFolder,
+  getChatJidsForAgent,
+  getWorkspaceFolderForChat,
+  getWorkspaceFolderForAgent,
+  getChatJidsForWorkspace,
 } from './session-manager.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { LocalWebChannel } from './channels/local-web/channel.js';
@@ -65,87 +74,260 @@ import { SlackChannel } from './channels/slack.js';
 import { WeChatChannel } from './channels/wechat.js';
 import { Channel, NewMessage } from './types.js';
 import { logger } from './logger.js';
+import { getRuntimeGroupForWorkspace, getWorkspaceFolder } from './workspace.js';
 
+const WORKSPACE_SYNC_HEADER = '[Workspace sync from linked clients]';
+
+function sanitizeLocalWebThreadTitle(title?: string): string {
+  const trimmed = (title || '').replace(/\s+/g, ' ').trim();
+  if (trimmed) return trimmed.slice(0, 80);
+  return 'New chat';
+}
+
+function summarizeWorkspaceSyncContent(content: string): string {
+  const compact = content.replace(/\s+/g, ' ').trim();
+  if (compact.length <= 220) return compact;
+  return `${compact.slice(0, 217)}...`;
+}
+
+function buildWorkspaceSyncPrefix(
+  agentId: string,
+  replyChatJid: string,
+  sinceTimestamp: string,
+  registeredGroups: ReturnType<typeof getRegisteredGroupsMap>,
+): string {
+  const chatJids = getChatJidsForAgent(agentId);
+  if (chatJids.length <= 1) return '';
+
+  let syncMessages = getRecentMessagesForChats(chatJids, 200)
+    .filter((msg) => msg.chat_jid !== replyChatJid)
+    .filter((msg) => !msg.content.includes(WORKSPACE_SYNC_HEADER));
+
+  if (sinceTimestamp) {
+    syncMessages = syncMessages.filter((msg) => msg.timestamp > sinceTimestamp);
+  } else {
+    syncMessages = syncMessages.slice(-4);
+  }
+
+  if (syncMessages.length === 0) return '';
+
+  const selected = syncMessages.slice(-8);
+  const lines = selected.map((msg) => {
+    const chatName = registeredGroups[msg.chat_jid]?.name || msg.chat_jid;
+    const sender = msg.is_from_me ? ASSISTANT_NAME : (msg.sender_name || msg.sender);
+    return `- ${chatName} / ${sender}: ${summarizeWorkspaceSyncContent(msg.content)}`;
+  });
+
+  return `${WORKSPACE_SYNC_HEADER}\n${lines.join('\n')}`;
+}
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
+let localWeb: LocalWebChannel | undefined;
 
 function channelForJid(jid: string): Channel | undefined {
   return channels.find(ch => ch.ownsJid(jid));
 }
 
+function notifyLocalWebWorkspaceUpdate(chatJid: string): void {
+  if (!localWeb) return;
+  const agentId = getAgentIdForChat(chatJid);
+  if (!agentId) return;
+  const agentChatJids = getChatJidsForAgent(agentId);
+  if (agentChatJids.some((jid) => jid.endsWith('@local.web'))) {
+    localWeb.notifyExternalUpdate(chatJid);
+  }
+}
+
 async function sendToChannel(jid: string, text: string): Promise<void> {
   const ch = channelForJid(jid);
   if (!ch) { logger.warn({ jid }, 'No channel owns this JID'); return; }
-  const formatted = ch.prefixAssistantName ? `${ASSISTANT_NAME}: ${text}` : text;
+  const formatted = formatOutbound(ch, text);
+  if (!formatted) return;
   await ch.sendMessage(jid, formatted);
+  if (!(ch instanceof LocalWebChannel)) {
+    const now = new Date().toISOString();
+    const group = getRegisteredGroupsMap()[jid];
+    storeChatMetadata(jid, now, group?.name);
+    storeMessage({
+      id: `${ch.name}-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      chat_jid: jid,
+      sender: 'bioclaw@system',
+      sender_name: ASSISTANT_NAME,
+      content: formatted,
+      timestamp: now,
+      is_from_me: true,
+    });
+    notifyLocalWebWorkspaceUpdate(jid);
+  }
 }
 
 async function sendImageToChannel(jid: string, imagePath: string, caption?: string): Promise<void> {
   const ch = channelForJid(jid);
   if (!ch?.sendImage) { logger.warn({ jid }, 'No channel with image support'); return; }
   await ch.sendImage(jid, imagePath, caption);
+  if (!(ch instanceof LocalWebChannel)) {
+    const now = new Date().toISOString();
+    const group = getRegisteredGroupsMap()[jid];
+    const description = caption
+      ? `[Image sent: ${imagePath.split('/').pop() || 'image'}]\n${caption}`
+      : `[Image sent: ${imagePath.split('/').pop() || 'image'}]`;
+    storeChatMetadata(jid, now, group?.name);
+    storeMessage({
+      id: `${ch.name}-image-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      chat_jid: jid,
+      sender: 'bioclaw@system',
+      sender_name: ASSISTANT_NAME,
+      content: description,
+      timestamp: now,
+      is_from_me: true,
+    });
+    notifyLocalWebWorkspaceUpdate(jid);
+  }
 }
 
-async function processGroupMessages(chatJid: string): Promise<boolean> {
+async function processAgentMessages(agentId: string): Promise<boolean> {
   const registeredGroups = getRegisteredGroupsMap();
-  const group = registeredGroups[chatJid];
-  if (!group) return true;
-  const channel = findChannel(channels, chatJid);
-  if (!channel) { logger.warn({ chatJid }, 'No channel found for group'); return true; }
+  const chatJids = getChatJidsForAgent(agentId);
+  if (chatJids.length === 0) return true;
+  const workspaceFolder = getWorkspaceFolderForAgent(agentId);
+  if (!workspaceFolder) return true;
 
-  const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
   const lastAgentTimestamp = getLastAgentTimestamp();
-  const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
-  const missedMessages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+  const pendingByChat = new Map<string, NewMessage[]>();
+  for (const chatJid of chatJids) {
+    const pending = getMessagesSince(
+      chatJid,
+      lastAgentTimestamp[chatJid] || '',
+      ASSISTANT_NAME,
+    );
+    if (pending.length > 0) pendingByChat.set(chatJid, pending);
+  }
+
+  if (pendingByChat.size === 0) return true;
+
+  const isMainWorkspace = workspaceFolder === MAIN_GROUP_FOLDER;
+  const missedMessages = Array.from(pendingByChat.entries())
+    .flatMap(([chatJid, messages]) => {
+      const chatGroup = registeredGroups[chatJid];
+      if (!chatGroup) return [];
+      if (
+        isMainWorkspace ||
+        chatGroup.requiresTrigger === false ||
+        messages.some((message) => TRIGGER_PATTERN.test(message.content.trim()))
+      ) {
+        return messages;
+      }
+      return [];
+    })
+    .sort((a, b) => (
+      a.timestamp === b.timestamp
+        ? a.id.localeCompare(b.id)
+        : a.timestamp.localeCompare(b.timestamp)
+    ));
+
   if (missedMessages.length === 0) return true;
 
-  if (!isMainGroup && group.requiresTrigger !== false) {
-    if (!missedMessages.some((m) => TRIGGER_PATTERN.test(m.content.trim()))) return true;
+  const replyChatJid = missedMessages[missedMessages.length - 1].chat_jid;
+  const group = getRuntimeGroupForWorkspace(
+    registeredGroups,
+    workspaceFolder,
+    replyChatJid,
+  );
+  if (!group) return true;
+  const channel = findChannel(channels, replyChatJid);
+  if (!channel) {
+    logger.warn({ replyChatJid, workspaceFolder }, 'No channel found for workspace reply route');
+    return true;
   }
 
   const prompt = formatMessages(missedMessages);
-  const previousCursor = lastAgentTimestamp[chatJid] || '';
-  setLastAgentTimestampFor(chatJid, missedMessages[missedMessages.length - 1].timestamp);
+  const previousCursors = new Map<string, string>();
+  for (const [chatJid, messages] of pendingByChat) {
+    const eligibleForChat = messages.filter(
+      (message) => missedMessages.some((pending) => pending.id === message.id),
+    );
+    if (eligibleForChat.length === 0) continue;
+    previousCursors.set(chatJid, lastAgentTimestamp[chatJid] || '');
+    setLastAgentTimestampFor(
+      chatJid,
+      eligibleForChat[eligibleForChat.length - 1].timestamp,
+    );
+  }
   saveState();
 
-  logger.info({ group: group.name, messageCount: missedMessages.length }, 'Processing messages');
+  logger.info(
+    { group: group.name, agentId, workspaceFolder, replyChatJid, messageCount: missedMessages.length },
+    'Processing agent messages',
+  );
+
+  const workspaceSyncPrefix = replyChatJid.endsWith('@local.web')
+    ? ''
+    : buildWorkspaceSyncPrefix(
+        agentId,
+        replyChatJid,
+        previousCursors.get(replyChatJid) || '',
+        registeredGroups,
+      );
+  let pendingWorkspaceSyncPrefix = workspaceSyncPrefix;
 
   const sessions = getSessions();
   recordAgentTraceEvent({
-    group_folder: group.folder, chat_jid: chatJid,
-    session_id: sessions[group.folder] ?? null, type: 'run_start',
-    payload: { messageCount: missedMessages.length, promptLength: prompt.length, preview: prompt.slice(0, 500) },
+    group_folder: workspaceFolder,
+    chat_jid: replyChatJid,
+    session_id: sessions[agentId] ?? null,
+    type: 'run_start',
+    payload: {
+      messageCount: missedMessages.length,
+      promptLength: prompt.length,
+      preview: prompt.slice(0, 500),
+    },
   });
 
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { queue.closeStdin(chatJid); }, IDLE_TIMEOUT);
+    idleTimer = setTimeout(() => {
+      queue.closeStdin(agentId);
+    }, IDLE_TIMEOUT);
   };
 
-  await channel.setTyping?.(chatJid, true);
+  await channel.setTyping?.(replyChatJid, true);
   let hadError = false;
   let outputSentToUser = false;
 
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
+  const output = await runAgent(group, agentId, prompt, replyChatJid, async (result) => {
     if (result.result) {
-      const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+      const raw = typeof result.result === 'string'
+        ? result.result
+        : JSON.stringify(result.result);
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      if (text) { await sendToChannel(chatJid, text); outputSentToUser = true; }
+      if (text) {
+        const outboundText = pendingWorkspaceSyncPrefix
+          ? `${pendingWorkspaceSyncPrefix}\n\n${text}`
+          : text;
+        await sendToChannel(replyChatJid, outboundText);
+        pendingWorkspaceSyncPrefix = '';
+        outputSentToUser = true;
+      }
       resetIdleTimer();
     }
     if (result.status === 'error') hadError = true;
   });
 
-  await channel.setTyping?.(chatJid, false);
+  await channel.setTyping?.(replyChatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
     if (outputSentToUser) return true;
-    setLastAgentTimestampFor(chatJid, previousCursor);
+    for (const [chatJid, previousCursor] of previousCursors) {
+      setLastAgentTimestampFor(chatJid, previousCursor);
+    }
     saveState();
-    logger.warn({ group: group.name }, 'Agent error, rolled back cursor for retry');
+    logger.warn(
+      { group: group.name, agentId, workspaceFolder },
+      'Agent error, rolled back cursor for retry',
+    );
     return false;
   }
   return true;
@@ -153,31 +335,33 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
 async function runAgent(
   group: import('./types.js').RegisteredGroup,
+  agentId: string,
   prompt: string, chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
-  const isMain = group.folder === MAIN_GROUP_FOLDER;
+  const workspaceFolder = getWorkspaceFolder(group);
+  const isMain = workspaceFolder === MAIN_GROUP_FOLDER;
   const sessions = getSessions();
-  const sessionId = sessions[group.folder];
+  const sessionId = sessions[agentId];
 
   const tasks = getAllTasks();
-  writeTasksSnapshot(group.folder, isMain, tasks.map((t) => ({
-    id: t.id, groupFolder: t.group_folder, prompt: t.prompt,
+  writeTasksSnapshot(agentId, isMain, tasks.map((t) => ({
+    id: t.id, groupFolder: t.agent_id || t.group_folder, prompt: t.prompt,
     schedule_type: t.schedule_type, schedule_value: t.schedule_value,
     status: t.status, next_run: t.next_run,
   })));
 
   const availableGroups = getAvailableGroups();
   const registeredGroups = getRegisteredGroupsMap();
-  writeGroupsSnapshot(group.folder, isMain, availableGroups, new Set(Object.keys(registeredGroups)));
+  writeGroupsSnapshot(agentId, isMain, availableGroups, new Set(Object.keys(registeredGroups)));
 
   const wrappedOnOutput = onOutput
     ? async (out: ContainerOutput) => {
-        if (out.newSessionId) updateSession(group.folder, out.newSessionId);
+        if (out.newSessionId) updateSession(agentId, out.newSessionId);
         const r = out.result == null ? '' : typeof out.result === 'string' ? out.result : JSON.stringify(out.result);
         recordAgentTraceEvent({
-          group_folder: group.folder, chat_jid: chatJid,
-          session_id: getSessions()[group.folder] ?? null, type: 'stream_output',
+          group_folder: workspaceFolder, chat_jid: chatJid,
+          session_id: getSessions()[agentId] ?? null, type: 'stream_output',
           payload: { status: out.status, resultLength: r.length, preview: r.replace(/<internal>[\s\S]*?<\/internal>/g, '').slice(0, 800), newSessionId: out.newSessionId ?? null },
         });
         await onOutput(out);
@@ -186,22 +370,23 @@ async function runAgent(
 
   try {
     const out = await runContainerAgent(
-      group, { prompt, sessionId, groupFolder: group.folder, chatJid, isMain },
-      (proc, cn) => queue.registerProcess(chatJid, proc, cn, group.folder),
+      group,
+      { prompt, sessionId, groupFolder: workspaceFolder, agentId, chatJid, isMain },
+      (proc, cn) => queue.registerProcess(agentId, proc, cn, agentId),
       wrappedOnOutput,
     );
-    if (out.newSessionId) updateSession(group.folder, out.newSessionId);
+    if (out.newSessionId) updateSession(agentId, out.newSessionId);
     recordAgentTraceEvent({
-      group_folder: group.folder, chat_jid: chatJid,
-      session_id: getSessions()[group.folder] ?? null,
+      group_folder: workspaceFolder, chat_jid: chatJid,
+      session_id: getSessions()[agentId] ?? null,
       type: 'run_end', payload: { status: out.status, error: out.error ?? null },
     });
     if (out.status === 'error') { logger.error({ group: group.name, error: out.error }, 'Container agent error'); return 'error'; }
     return 'success';
   } catch (err) {
     recordAgentTraceEvent({
-      group_folder: group.folder, chat_jid: chatJid,
-      session_id: getSessions()[group.folder] ?? null,
+      group_folder: workspaceFolder, chat_jid: chatJid,
+      session_id: getSessions()[agentId] ?? null,
       type: 'run_error', payload: { message: err instanceof Error ? err.message : String(err) },
     });
     logger.error({ group: group.name, err }, 'Agent error');
@@ -234,8 +419,14 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
 
   const channelCallbacks = {
-    onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),
-    onChatMetadata: (chatJid: string, timestamp: string, name?: string) => storeChatMetadata(chatJid, timestamp, name),
+    onMessage: (_chatJid: string, msg: NewMessage) => {
+      storeMessage(msg);
+      notifyLocalWebWorkspaceUpdate(msg.chat_jid);
+    },
+    onChatMetadata: (chatJid: string, timestamp: string, name?: string) => {
+      storeChatMetadata(chatJid, timestamp, name);
+      notifyLocalWebWorkspaceUpdate(chatJid);
+    },
     registeredGroups: () => getRegisteredGroupsMap(),
     autoRegister: (jid: string, name: string, channelName: string) => {
       if (getRegisteredGroupsMap()[jid]) return;
@@ -254,7 +445,62 @@ async function main(): Promise<void> {
         registerGroup(LOCAL_WEB_GROUP_JID, { name: LOCAL_WEB_GROUP_NAME, folder: LOCAL_WEB_GROUP_FOLDER, trigger: `@${ASSISTANT_NAME}`, added_at: new Date().toISOString(), requiresTrigger: false });
       }
     }
-    const localWeb = new LocalWebChannel({ onMessage: (_jid, msg) => storeMessage(msg), onChatMetadata: (jid, ts, name) => storeChatMetadata(jid, ts, name) });
+
+    const listLocalWebThreads = () => {
+      const chatInfoByJid = Object.fromEntries(
+        getAllChats().map((chat) => [chat.jid, chat]),
+      );
+
+      return Object.entries(getRegisteredGroupsMap())
+        .filter(([jid]) => jid.endsWith('@local.web'))
+        .map(([jid, group]) => {
+          const chatInfo = chatInfoByJid[jid];
+          const workspaceFolder = getWorkspaceFolderForChat(jid) || group.folder;
+          return {
+            chatJid: jid,
+            title: group.name,
+            workspaceFolder,
+            addedAt: group.added_at,
+            lastActivity: chatInfo?.last_message_time || group.added_at,
+            agentId: getAgentIdForChat(jid) || workspaceFolder,
+          };
+        })
+        .sort((a, b) => (b.lastActivity || b.addedAt).localeCompare(a.lastActivity || a.addedAt));
+    };
+
+    const createLocalWebThread = async (title?: string) => {
+      const now = new Date().toISOString();
+      const token = randomUUID().replace(/-/g, '').slice(0, 12);
+      const chatJid = `thread-${token}@local.web`;
+      const folder = `thread-${token}`;
+      const threadTitle = sanitizeLocalWebThreadTitle(title);
+      registerGroup(chatJid, {
+        name: threadTitle,
+        folder,
+        workspaceFolder: folder,
+        trigger: `@${ASSISTANT_NAME}`,
+        added_at: now,
+        requiresTrigger: false,
+      });
+      storeChatMetadata(chatJid, now, threadTitle);
+      return listLocalWebThreads().find((thread) => thread.chatJid === chatJid)!;
+    };
+
+    localWeb = new LocalWebChannel({
+      onMessage: (_jid, msg) => {
+        storeMessage(msg);
+        notifyLocalWebWorkspaceUpdate(msg.chat_jid);
+      },
+      onChatMetadata: (jid, ts, name) => {
+        storeChatMetadata(jid, ts, name);
+        notifyLocalWebWorkspaceUpdate(jid);
+      },
+      listThreads: listLocalWebThreads,
+      createThread: createLocalWebThread,
+      getWorkspaceFolder: (chatJid) =>
+        getWorkspaceFolderForChat(chatJid) || LOCAL_WEB_GROUP_FOLDER,
+      getWorkspaceChatJids: (chatJid) => [chatJid],
+    });
     channels.push(localWeb);
     await localWeb.connect();
   }
@@ -323,17 +569,18 @@ async function main(): Promise<void> {
   startSchedulerLoop({
     registeredGroups: () => getRegisteredGroupsMap(),
     getSessions: () => getSessions(),
+    getAgentWorkspaceFolder,
     queue,
-    onProcess: (jid, proc, cn, gf) => queue.registerProcess(jid, proc, cn, gf),
-    sendMessage: async (jid, rawText) => {
-      const ch = channelForJid(jid);
-      if (ch) { const text = formatOutbound(ch, rawText); if (text) await ch.sendMessage(jid, text); }
-    },
+    onProcess: (agentId, proc, cn, ipcFolder) =>
+      queue.registerProcess(agentId, proc, cn, ipcFolder),
+    sendMessage: async (jid, rawText) => sendToChannel(jid, rawText),
   });
 
   startIpcWatcher({
     registeredGroups: () => getRegisteredGroupsMap(),
     registerGroup,
+    getAgentIdForChat,
+    getAgentWorkspaceFolder,
     sendMessage: (jid, text) => sendToChannel(jid, text),
     sendImage: (jid, path, caption) => sendImageToChannel(jid, path, caption),
     syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
@@ -341,7 +588,7 @@ async function main(): Promise<void> {
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
   });
 
-  queue.setProcessMessagesFn(processGroupMessages);
+  queue.setProcessMessagesFn(processAgentMessages);
   recoverPendingMessages(queue);
   startMessageLoop(queue);
 }

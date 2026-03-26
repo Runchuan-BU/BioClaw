@@ -26,6 +26,7 @@ interface ContainerInput {
   prompt: string;
   sessionId?: string;
   groupFolder: string;
+  agentId?: string;
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
@@ -101,6 +102,55 @@ interface OpenAIChatResponse {
     finish_reason?: string | null;
   }>;
   error?: { message?: string };
+}
+
+const OPENAI_SESSION_DIR = '/home/node/.claude/openai-compatible-sessions';
+
+function getOpenAICompatibleSessionPath(sessionId: string): string {
+  return path.join(OPENAI_SESSION_DIR, `${encodeURIComponent(sessionId)}.json`);
+}
+
+function loadOpenAICompatibleSessionMessages(
+  sessionId: string,
+): OpenAIChatMessage[] | undefined {
+  const sessionPath = getOpenAICompatibleSessionPath(sessionId);
+  if (!fs.existsSync(sessionPath)) return undefined;
+
+  try {
+    const raw = fs.readFileSync(sessionPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      log(`Ignoring malformed OpenAI-compatible session file: ${sessionPath}`);
+      return undefined;
+    }
+    return parsed as OpenAIChatMessage[];
+  } catch (err) {
+    log(
+      `Failed to load OpenAI-compatible session ${sessionId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return undefined;
+  }
+}
+
+function saveOpenAICompatibleSessionMessages(
+  sessionId: string,
+  messages: OpenAIChatMessage[],
+): void {
+  try {
+    fs.mkdirSync(OPENAI_SESSION_DIR, { recursive: true });
+    const sessionPath = getOpenAICompatibleSessionPath(sessionId);
+    const tempPath = `${sessionPath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(messages, null, 2));
+    fs.renameSync(tempPath, sessionPath);
+  } catch (err) {
+    log(
+      `Failed to persist OpenAI-compatible session ${sessionId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }
 
 /** Normalize API content (string or array of blocks) to string. */
@@ -764,6 +814,7 @@ async function runQuery(
           env: {
             BIOCLAW_CHAT_JID: containerInput.chatJid,
             BIOCLAW_GROUP_FOLDER: containerInput.groupFolder,
+            BIOCLAW_AGENT_ID: containerInput.agentId || containerInput.groupFolder,
             BIOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
@@ -1029,8 +1080,9 @@ async function runOpenAICompatibleConversation(
   existingMessages?: OpenAIChatMessage[],
 ): Promise<{ newSessionId: string; closedDuringQuery: boolean; messages: OpenAIChatMessage[] }> {
   const newSessionId = sessionId || `openai-compatible:${randomUUID()}`;
-  const messages: OpenAIChatMessage[] = existingMessages
-    ? [...existingMessages, { role: 'user', content: prompt }]
+  const persistedMessages = existingMessages || loadOpenAICompatibleSessionMessages(newSessionId);
+  const messages: OpenAIChatMessage[] = persistedMessages
+    ? [...persistedMessages, { role: 'user', content: prompt }]
     : (() => {
         const bioSystemPrompt = getBioSystemPrompt();
         const globalClaudeMdPath = '/workspace/global/CLAUDE.md';
@@ -1042,6 +1094,7 @@ async function runOpenAICompatibleConversation(
           { role: 'user', content: prompt },
         ];
       })();
+  saveOpenAICompatibleSessionMessages(newSessionId, messages);
 
   let toolIterations = 0;
   while (toolIterations < OPENAI_TOOL_MAX_ITERATIONS) {
@@ -1053,6 +1106,7 @@ async function runOpenAICompatibleConversation(
       content: normalizeContent(assistantMessage.content),
       tool_calls: assistantMessage.tool_calls,
     });
+    saveOpenAICompatibleSessionMessages(newSessionId, messages);
 
     if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
       const textResult = normalizeContent(assistantMessage.content);
@@ -1077,6 +1131,7 @@ async function runOpenAICompatibleConversation(
         tool_call_id: toolCall.id,
         content: toolResult,
       });
+      saveOpenAICompatibleSessionMessages(newSessionId, messages);
     }
   }
 

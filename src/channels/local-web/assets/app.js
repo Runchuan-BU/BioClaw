@@ -10,6 +10,8 @@
   var assistantName = cfg.assistantName || 'Bioclaw';
   var AUTH_TOKEN = cfg.authToken || '';
   var STREAM_QS = cfg.streamQs || '';
+  var THREAD_KEY = 'bioclaw-web-thread-jid';
+  var threads = [];
 
   // Set session JID in settings drawer
   var jidEl = document.getElementById('sessionJid');
@@ -22,6 +24,8 @@ const LANG_KEY = 'bioclaw-web-lang';
     const tabChatBtn = document.getElementById('tabChatBtn');
     const panelTrace = document.getElementById('panelTrace');
     const panelChat = document.getElementById('panelChat');
+    const threadListEl = document.getElementById('threadList');
+    const newThreadBtn = document.getElementById('newThreadBtn');
     const messagesEl = document.getElementById('messages');
     const form = document.getElementById('composer');
     const input = document.getElementById('text');
@@ -73,6 +77,12 @@ const LANG_KEY = 'bioclaw-web-lang';
         settingsTitle: '设置',
         settingsAria: '打开设置',
         closeSettingsAria: '关闭',
+        threadsTitle: '对话',
+        threadsHint: '每个对话独立保存记忆与历史。',
+        newThread: '新对话',
+        newThreadPrompt: '输入新对话标题（可留空）',
+        threadUntitled: '新对话',
+        threadEmpty: '还没有其他对话。点击右上角创建一个新的独立线程。',
         secDisplay: '显示',
         secConnection: '连接',
         lblLang: '界面语言',
@@ -142,6 +152,12 @@ const LANG_KEY = 'bioclaw-web-lang';
         settingsTitle: 'Settings',
         settingsAria: 'Open settings',
         closeSettingsAria: 'Close',
+        threadsTitle: 'Threads',
+        threadsHint: 'Each thread keeps its own memory and history.',
+        newThread: 'New chat',
+        newThreadPrompt: 'Enter a title for the new chat (optional)',
+        threadUntitled: 'New chat',
+        threadEmpty: 'No extra chats yet. Create a new independent thread from the button above.',
         secDisplay: 'Display',
         secConnection: 'Connection',
         lblLang: 'Language',
@@ -217,6 +233,9 @@ const LANG_KEY = 'bioclaw-web-lang';
       document.getElementById('settingsHeading').textContent = t.settingsTitle;
       openSettingsBtn.setAttribute('aria-label', t.settingsAria);
       closeSettingsBtn.setAttribute('aria-label', t.closeSettingsAria);
+      document.getElementById('threadsTitle').textContent = t.threadsTitle;
+      document.getElementById('threadsHint').textContent = t.threadsHint;
+      newThreadBtn.textContent = t.newThread;
       document.getElementById('secDisplay').textContent = t.secDisplay;
       document.getElementById('secConnection').textContent = t.secConnection;
       document.getElementById('lblLang').textContent = t.lblLang;
@@ -242,6 +261,7 @@ const LANG_KEY = 'bioclaw-web-lang';
       var hasFile = fileInput.files && fileInput.files[0];
       fileNameEl.textContent = hasFile ? fileInput.files[0].name : t.noFile;
       if (!groupSel.value) treeEl.textContent = t.treePick;
+      renderThreads();
       if (lastConnMode === null) {
         connDot.classList.remove('live', 'poll');
         connLabel.textContent = t.connConnecting;
@@ -774,6 +794,73 @@ const LANG_KEY = 'bioclaw-web-lang';
       if (e.key === 'Escape' && settingsDrawer.classList.contains('is-open')) setSettingsOpen(false);
     });
 
+    function formatThreadTime(value) {
+      if (!value) return '';
+      try {
+        return new Date(value).toLocaleString([], {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      } catch (e) {
+        return String(value);
+      }
+    }
+
+    function stopChatSse() {
+      if (chatEs) {
+        chatEs.close();
+        chatEs = null;
+      }
+    }
+
+    function renderThreads() {
+      if (!threadListEl) return;
+      var t = T();
+      if (!threads.length) {
+        threadListEl.innerHTML = '<div class="thread-empty">' + esc(t.threadEmpty) + '</div>';
+        return;
+      }
+      threadListEl.innerHTML = threads.map(function (thread) {
+        var active = thread.chatJid === chatJid ? ' is-active' : '';
+        var title = thread.title || t.threadUntitled;
+        var metaTime = formatThreadTime(thread.lastActivity || thread.addedAt);
+        return '<button type="button" class="thread-item' + active + '" data-chat-jid="' + esc(thread.chatJid) + '">' +
+          '<div class="thread-item-title">' + esc(title) + '</div>' +
+          '<div class="thread-item-meta"><span>' + esc(thread.workspaceFolder || '') + '</span><span>' + esc(metaTime) + '</span></div>' +
+          '</button>';
+      }).join('');
+    }
+
+    async function refreshThreads() {
+      try {
+        var res = await fetch('/api/threads');
+        if (!res.ok) return;
+        var data = await res.json();
+        threads = Array.isArray(data.threads) ? data.threads : [];
+        if (!threads.some(function (thread) { return thread.chatJid === chatJid; }) && threads[0]) {
+          chatJid = threads[0].chatJid;
+        }
+        if (jidEl) jidEl.textContent = chatJid;
+        renderThreads();
+      } catch (e) {}
+    }
+
+    async function setActiveThread(nextChatJid) {
+      if (!nextChatJid || nextChatJid === chatJid) return;
+      chatJid = nextChatJid;
+      lastSignature = '';
+      messagesEl.innerHTML = '';
+      if (jidEl) jidEl.textContent = chatJid;
+      try { localStorage.setItem(THREAD_KEY, chatJid); } catch (e) {}
+      renderThreads();
+      stopPolling();
+      stopChatSse();
+      await refreshMessages();
+      connectChatSse();
+    }
+
     function render(messages) {
       var signature = JSON.stringify(messages.map(function (m) { return [m.id, m.timestamp, m.content]; }));
       if (signature === lastSignature) return;
@@ -822,7 +909,7 @@ const LANG_KEY = 'bioclaw-web-lang';
 
     async function refreshMessages() {
       try {
-        var res = await fetch('/api/messages?chatJid=' + encodeURIComponent(chatJid));
+        var res = await fetch('/api/messages?scope=chat&chatJid=' + encodeURIComponent(chatJid));
         if (!res.ok) return;
         var data = await res.json();
         render(data.messages || []);
@@ -849,6 +936,40 @@ const LANG_KEY = 'bioclaw-web-lang';
           startPolling();
         };
       } catch (e) { startPolling(); }
+    }
+
+    if (threadListEl) {
+      threadListEl.addEventListener('click', function (event) {
+        var button = event.target && event.target.closest ? event.target.closest('.thread-item') : null;
+        if (!button) return;
+        var nextChatJid = button.getAttribute('data-chat-jid');
+        if (nextChatJid) setActiveThread(nextChatJid);
+      });
+    }
+
+    if (newThreadBtn) {
+      newThreadBtn.addEventListener('click', async function () {
+        var title = window.prompt(T().newThreadPrompt, '');
+        if (title === null) return;
+        newThreadBtn.disabled = true;
+        try {
+          var res = await fetch('/api/threads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title }),
+          });
+          if (!res.ok) throw new Error('THREAD_CREATE_FAIL');
+          var data = await res.json();
+          await refreshThreads();
+          if (data.thread && data.thread.chatJid) {
+            await setActiveThread(data.thread.chatJid);
+          }
+        } catch (e) {
+          setStatus('Failed to create thread');
+        } finally {
+          newThreadBtn.disabled = false;
+        }
+      });
     }
 
     fileInput.addEventListener('change', function () {
@@ -900,6 +1021,20 @@ const LANG_KEY = 'bioclaw-web-lang';
 
     function setStatus(text) { statusEl.textContent = text || ''; }
 
-    refreshMessages();
-    connectChatSse();
+    (async function initThreadsAndChat() {
+      try {
+        await refreshThreads();
+        var savedThread = null;
+        try { savedThread = localStorage.getItem(THREAD_KEY); } catch (e) {}
+        if (savedThread && threads.some(function (thread) { return thread.chatJid === savedThread; })) {
+          chatJid = savedThread;
+        } else if (threads.length > 0) {
+          chatJid = threads[0].chatJid;
+        }
+        if (jidEl) jidEl.textContent = chatJid;
+        renderThreads();
+      } catch (e) {}
+      refreshMessages();
+      connectChatSse();
+    })();
 })();

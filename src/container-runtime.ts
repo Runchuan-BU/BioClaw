@@ -16,6 +16,7 @@ import { ensureGroupDir, ensureGroupIpcDir, ensureGroupSessionDir } from './grou
 import { logger } from './logger.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
+import { getWorkspaceFolder } from './workspace.js';
 
 export interface VolumeMount {
   hostPath: string;
@@ -29,12 +30,15 @@ export interface VolumeMount {
 export function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
+  agentId?: string,
 ): VolumeMount[] {
   const mounts: VolumeMount[] = [];
   const projectRoot = process.cwd();
+  const workspaceFolder = getWorkspaceFolder(group);
+  const runtimeScope = agentId || workspaceFolder;
 
   // Ensure group directory exists
-  ensureGroupDir(group.folder);
+  ensureGroupDir(workspaceFolder);
 
   if (isMain) {
     mounts.push({
@@ -43,13 +47,13 @@ export function buildVolumeMounts(
       readonly: false,
     });
     mounts.push({
-      hostPath: path.join(GROUPS_DIR, group.folder),
+      hostPath: path.join(GROUPS_DIR, workspaceFolder),
       containerPath: '/workspace/group',
       readonly: false,
     });
   } else {
     mounts.push({
-      hostPath: path.join(GROUPS_DIR, group.folder),
+      hostPath: path.join(GROUPS_DIR, workspaceFolder),
       containerPath: '/workspace/group',
       readonly: false,
     });
@@ -65,7 +69,7 @@ export function buildVolumeMounts(
   }
 
   // Per-group Claude sessions directory
-  const groupSessionsDir = ensureGroupSessionDir(group.folder);
+  const groupSessionsDir = ensureGroupSessionDir(runtimeScope);
   mounts.push({
     hostPath: groupSessionsDir,
     containerPath: '/home/node/.claude',
@@ -73,7 +77,7 @@ export function buildVolumeMounts(
   });
 
   // Per-group IPC namespace
-  const groupIpcDir = ensureGroupIpcDir(group.folder);
+  const groupIpcDir = ensureGroupIpcDir(runtimeScope);
   mounts.push({
     hostPath: groupIpcDir,
     containerPath: '/workspace/ipc',

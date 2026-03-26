@@ -11,6 +11,7 @@
     "web": "node scripts/start-web.mjs",
     "open:web": "node scripts/open-local-web.mjs",
     "stop:web": "node scripts/stop-bioclaw-web.mjs",
+    "agents": "tsx src/agent-admin.ts",
     "cli": "tsx src/cli.ts",
     "auth": "tsx src/channels/whatsapp/auth.ts",
     "typecheck": "tsc --noEmit",

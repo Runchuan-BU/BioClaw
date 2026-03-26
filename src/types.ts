@@ -32,9 +32,22 @@ export interface ContainerConfig {
   timeout?: number; // Default: 300000 (5 minutes)
 }
 
+export interface AgentDefinition {
+  id: string;
+  workspaceFolder: string;
+  name: string;
+  description?: string;
+  systemPrompt?: string;
+  containerConfig?: ContainerConfig;
+  createdAt: string;
+  updatedAt?: string;
+  archived?: boolean;
+}
+
 export interface RegisteredGroup {
   name: string;
   folder: string;
+  workspaceFolder?: string; // Shared session/workspace identity; defaults to folder
   trigger: string;
   added_at: string;
   containerConfig?: ContainerConfig;
@@ -55,6 +68,7 @@ export interface ScheduledTask {
   id: string;
   group_folder: string;
   chat_jid: string;
+  agent_id?: string;
   prompt: string;
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;

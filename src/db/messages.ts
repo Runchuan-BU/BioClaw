@@ -198,3 +198,24 @@ export function getRecentMessages(
     .all(chatJid, limit)
     .reverse() as NewMessage[];
 }
+
+export function getRecentMessagesForChats(
+  chatJids: string[],
+  limit = 100,
+): NewMessage[] {
+  if (chatJids.length === 0) return [];
+  const db = getDb();
+  const placeholders = chatJids.map(() => '?').join(',');
+  return db
+    .prepare(
+      `
+      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+      FROM messages
+      WHERE chat_jid IN (${placeholders})
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `,
+    )
+    .all(...chatJids, limit)
+    .reverse() as NewMessage[];
+}

@@ -24,6 +24,7 @@ import {
 } from './container-runtime.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
+import { getWorkspaceFolder } from './workspace.js';
 
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---BIOCLAW_OUTPUT_START---';
@@ -33,6 +34,7 @@ export interface ContainerInput {
   prompt: string;
   sessionId?: string;
   groupFolder: string;
+  agentId?: string;
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
@@ -147,14 +149,17 @@ export async function runContainerAgent(
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
+  const workspaceFolder = getWorkspaceFolder(group);
+  const agentId = input.agentId || workspaceFolder;
 
-  const mounts = buildVolumeMounts(group, input.isMain);
-  const containerName = makeContainerName(group.folder);
+  const mounts = buildVolumeMounts(group, input.isMain, agentId);
+  const containerName = makeContainerName(agentId);
   const containerArgs = buildContainerArgs(mounts, containerName);
 
   logger.debug(
     {
       group: group.name,
+      agentId,
       containerName,
       mounts: mounts.map(
         (m) =>
@@ -168,6 +173,7 @@ export async function runContainerAgent(
   logger.info(
     {
       group: group.name,
+      agentId,
       containerName,
       mountCount: mounts.length,
       isMain: input.isMain,
@@ -176,18 +182,19 @@ export async function runContainerAgent(
   );
 
   recordAgentTraceEvent({
-    group_folder: group.folder,
+    group_folder: workspaceFolder,
     chat_jid: input.chatJid,
     session_id: input.sessionId ?? null,
     type: 'container_spawn',
     payload: {
       containerName,
+      agentId,
       isMain: input.isMain,
       isScheduledTask: Boolean(input.isScheduledTask),
     },
   });
 
-  const logsDir = path.join(GROUPS_DIR, group.folder, 'logs');
+  const logsDir = path.join(GROUPS_DIR, workspaceFolder, 'logs');
   fs.mkdirSync(logsDir, { recursive: true });
 
   return new Promise((resolve) => {
@@ -253,7 +260,7 @@ export async function runContainerAgent(
             outputChain = outputChain.then(() => onOutput(parsed));
           } catch (err) {
             logger.warn(
-              { group: group.name, error: err },
+              { group: group.name, workspaceFolder, error: err },
               'Failed to parse streamed output chunk',
             );
           }
@@ -265,7 +272,7 @@ export async function runContainerAgent(
       const chunk = data.toString();
       const lines = chunk.trim().split('\n');
       for (const line of lines) {
-        if (line) logger.debug({ container: group.folder }, line);
+        if (line) logger.debug({ container: workspaceFolder }, line);
       }
       if (stderrTruncated) return;
       const remaining = CONTAINER_MAX_OUTPUT_SIZE - stderr.length;
@@ -288,7 +295,7 @@ export async function runContainerAgent(
 
     const killOnTimeout = () => {
       timedOut = true;
-      logger.error({ group: group.name, containerName }, 'Container timeout, stopping gracefully');
+      logger.error({ group: group.name, workspaceFolder, containerName }, 'Container timeout, stopping gracefully');
       stopContainer(containerName, container, 15000);
     };
 
@@ -332,7 +339,7 @@ export async function runContainerAgent(
         }
 
         logger.error(
-          { group: group.name, containerName, duration, code },
+          { group: group.name, workspaceFolder, containerName, duration, code },
           'Container timed out with no output',
         );
 
@@ -405,6 +412,7 @@ export async function runContainerAgent(
         logger.error(
           {
             group: group.name,
+            workspaceFolder,
             code,
             duration,
             stderr,
@@ -426,7 +434,7 @@ export async function runContainerAgent(
       if (onOutput) {
         outputChain.then(() => {
           logger.info(
-            { group: group.name, duration, newSessionId },
+            { group: group.name, workspaceFolder, duration, newSessionId },
             'Container completed (streaming mode)',
           );
           resolve({
@@ -458,6 +466,7 @@ export async function runContainerAgent(
         logger.info(
           {
             group: group.name,
+            workspaceFolder,
             duration,
             status: output.status,
             hasResult: !!output.result,
@@ -470,6 +479,7 @@ export async function runContainerAgent(
         logger.error(
           {
             group: group.name,
+            workspaceFolder,
             stdout,
             stderr,
             error: err,
@@ -487,7 +497,7 @@ export async function runContainerAgent(
 
     container.on('error', (err) => {
       clearTimeout(timeout);
-      logger.error({ group: group.name, containerName, error: err }, 'Container spawn error');
+      logger.error({ group: group.name, workspaceFolder, containerName, error: err }, 'Container spawn error');
       resolve({
         status: 'error',
         result: null,

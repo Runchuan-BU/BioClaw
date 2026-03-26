@@ -11,10 +11,11 @@ export function getRegisteredGroup(
     | {
         jid: string;
         name: string;
-        folder: string;
-        trigger_pattern: string;
-        added_at: string;
-        container_config: string | null;
+      folder: string;
+      workspace_folder: string | null;
+      trigger_pattern: string;
+      added_at: string;
+      container_config: string | null;
         requires_trigger: number | null;
       }
     | undefined;
@@ -23,6 +24,7 @@ export function getRegisteredGroup(
     jid: row.jid,
     name: row.name,
     folder: row.folder,
+    workspaceFolder: row.workspace_folder || row.folder,
     trigger: row.trigger_pattern,
     added_at: row.added_at,
     containerConfig: row.container_config
@@ -38,12 +40,13 @@ export function setRegisteredGroup(
 ): void {
   const db = getDb();
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, workspace_folder, trigger_pattern, added_at, container_config, requires_trigger)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
     group.folder,
+    group.workspaceFolder || group.folder,
     group.trigger,
     group.added_at,
     group.containerConfig ? JSON.stringify(group.containerConfig) : null,
@@ -59,6 +62,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     jid: string;
     name: string;
     folder: string;
+    workspace_folder: string | null;
     trigger_pattern: string;
     added_at: string;
     container_config: string | null;
@@ -69,6 +73,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     result[row.jid] = {
       name: row.name,
       folder: row.folder,
+      workspaceFolder: row.workspace_folder || row.folder,
       trigger: row.trigger_pattern,
       added_at: row.added_at,
       containerConfig: row.container_config

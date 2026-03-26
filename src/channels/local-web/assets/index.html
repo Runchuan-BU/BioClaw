@@ -44,21 +44,35 @@
           </div>
         </section>
         <section id="panelChat" class="panel panel-chat" role="tabpanel" aria-labelledby="tabChatBtn">
-          <div class="chat-hero"><h1 id="chatTitle"></h1><p class="subtitle" id="chatHint"></p></div>
-          <div id="messages" class="chat-scroll" aria-live="polite"></div>
-          <div class="composer-card">
-            <form id="composer">
-              <textarea id="text" rows="4"></textarea>
-              <div class="row">
-                <div class="hint" id="uploadHint"></div>
-                <div class="toolbar">
-                  <label class="upload"><span id="uploadLabel"></span><input id="file" type="file"></label>
-                  <span id="filename" class="filename"></span>
-                  <button class="primary" id="send" type="submit"></button>
+          <div class="chat-shell">
+            <aside class="thread-rail">
+              <div class="thread-rail-head">
+                <div>
+                  <div class="thread-rail-label" id="threadsTitle"></div>
+                  <div class="thread-rail-sub" id="threadsHint"></div>
                 </div>
+                <button type="button" class="primary subtle" id="newThreadBtn"></button>
               </div>
-              <div id="status" class="status"></div>
-            </form>
+              <div id="threadList" class="thread-list" aria-live="polite"></div>
+            </aside>
+            <div class="chat-main">
+              <div class="chat-hero"><h1 id="chatTitle"></h1><p class="subtitle" id="chatHint"></p></div>
+              <div id="messages" class="chat-scroll" aria-live="polite"></div>
+              <div class="composer-card">
+                <form id="composer">
+                  <textarea id="text" rows="4"></textarea>
+                  <div class="row">
+                    <div class="hint" id="uploadHint"></div>
+                    <div class="toolbar">
+                      <label class="upload"><span id="uploadLabel"></span><input id="file" type="file"></label>
+                      <span id="filename" class="filename"></span>
+                      <button class="primary" id="send" type="submit"></button>
+                    </div>
+                  </div>
+                  <div id="status" class="status"></div>
+                </form>
+              </div>
+            </div>
           </div>
         </section>
       </div>
