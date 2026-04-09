@@ -37,6 +37,27 @@
 </table>
 </div>
 
+
+<br/><br/>
+
+<h2 align="center">📄 Technical Document</h2>
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center">
+      <a href="docs/BioClaw_Technical_Document.pdf">
+        <img src="docs/images/tech_doc_card.svg" width="650" alt="BioClaw Technical Document"/>
+        <br/><br/>
+        <img src="https://img.shields.io/badge/Download-Technical_Document_PDF-2b6cb0?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" height="50" alt="Download PDF"/>
+      </a>
+      <br/><br/>
+      <h3>👆 Click above to read the full technical documentation</h3>
+    </td>
+  </tr>
+</table>
+</div>
+
 <br/><br/>
 
 <div align="center">
