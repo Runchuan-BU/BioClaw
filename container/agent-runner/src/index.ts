@@ -693,7 +693,9 @@ function buildGlobalSystemPrompt(
   const workdirBlock = `\n\n[Current working directory]\n${currentWorkdir}\n`;
   const languageBlock = `\n\n[Language policy]\nDetect the language the user is writing in and reply in the same language. If the user writes in Chinese, reply in Chinese; if in English, reply in English; otherwise mirror their language. This applies to both your final answer and any "send_message" / progress updates. Tool inputs (commands, file paths, code) stay in their natural form (English/code).\n`;
 
-  return bioSystemPrompt + globalContent + agentMemoryBlock + enabledSkillsBlock + routingBlock + workdirBlock + languageBlock;
+  const dataIntegrityBlock = `\n\n[Data integrity — never fabricate scientific files]\nWhen the user asks for a structure file, sequence file, dataset, or any other scientific artifact, you MUST obtain it from a real, verifiable source — never reconstruct it from memory or invent contents.\n\n- PDB / mmCIF / structure files: download from RCSB (\`https://files.rcsb.org/view/{ID}.pdb\` or \`{ID}.cif\`) using curl/wget. Save the response as-is.\n- Sequences (FASTA / GenBank): fetch from NCBI Entrez / UniProt / Ensembl via their HTTP APIs.\n- Datasets / supplementary files: download from the original repository (GEO, ArrayExpress, supplementary URLs).\n\nIf a download fails (network blocked, 404, timeout), STOP and tell the user clearly: which URL you tried, the error you got, and what they can do (e.g. provide the file directly, retry, configure proxy). DO NOT write a placeholder file with a few hand-typed ATOM lines or REMARK summaries pretending to be the real data — this silently breaks downstream tools and looks like a successful download to the user.\n\nVerification rule for PDB downloads: after curl/wget, check the file ends with the line "END" and contains > 100 ATOM records. If not, treat the download as failed and report it.\n`;
+
+  return bioSystemPrompt + globalContent + agentMemoryBlock + enabledSkillsBlock + routingBlock + workdirBlock + languageBlock + dataIntegrityBlock;
 }
 
 function getSessionSummary(sessionId: string, transcriptPath: string): string | null {

@@ -226,6 +226,13 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
         suggestDataDesc: '读 CSV 生成 volcano plot',
         suggestPubmedTitle: '文献速查',
         suggestPubmedDesc: '近期 CRISPR off-target 相关论文',
+        suggest3dTitle: '🧬 蛋白 3D 结构',
+        suggest3dDesc: '点击填入提示词；发出后 agent 会下载 PDB 文件，点击文件即可 3D 预览',
+        drawerTabTrace: '推理过程',
+        drawerTabWorkspace: '工作目录',
+        ws3dTitle: '蛋白 3D 结构',
+        ws3dHint: '输入 PDB ID 或点击示例',
+        ws3dLoad: '载入',
         workThinking: '正在思考',
         workRunning: '正在执行',
         workDone: '已完成',
@@ -356,6 +363,13 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
         suggestDataDesc: 'Read a CSV and generate a volcano plot',
         suggestPubmedTitle: 'PubMed quickscan',
         suggestPubmedDesc: 'Recent CRISPR off-target papers',
+        suggest3dTitle: '🧬 Protein 3D structure',
+        suggest3dDesc: 'Click to fill a prompt; after sending, the agent downloads the PDB and clicking it shows the 3D view',
+        drawerTabTrace: 'Trace',
+        drawerTabWorkspace: 'Workspace',
+        ws3dTitle: 'Protein 3D viewer',
+        ws3dHint: 'Enter a PDB ID or pick an example',
+        ws3dLoad: 'Load',
         workThinking: 'Thinking',
         workRunning: 'Running',
         workDone: 'Done',
@@ -399,6 +413,18 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
       langBtn.textContent = t.langToggle;
       var openTraceBtnLabelEl = document.getElementById('openTraceBtnLabel');
       if (openTraceBtnLabelEl) openTraceBtnLabelEl.textContent = (t.tabTrace || 'Lab trace');
+      var drawerTabTraceLabelEl = document.getElementById('drawerTabTraceLabel');
+      if (drawerTabTraceLabelEl) drawerTabTraceLabelEl.textContent = (t.drawerTabTrace || 'Trace');
+      var drawerTabWorkspaceLabelEl = document.getElementById('drawerTabWorkspaceLabel');
+      if (drawerTabWorkspaceLabelEl) drawerTabWorkspaceLabelEl.textContent = (t.drawerTabWorkspace || 'Workspace');
+      var ws3dTitleEl = document.getElementById('ws3dLoaderTitle');
+      if (ws3dTitleEl) ws3dTitleEl.textContent = (t.ws3dTitle || 'Protein 3D viewer');
+      var ws3dHintEl = document.getElementById('ws3dLoaderHint');
+      if (ws3dHintEl) ws3dHintEl.textContent = (t.ws3dHint || 'Enter a PDB ID or pick an example');
+      var ws3dLoadBtnEl = document.getElementById('ws3dLoadBtn');
+      if (ws3dLoadBtnEl) ws3dLoadBtnEl.textContent = (t.ws3dLoad || 'Load');
+      // Refresh active 3D viewer's button labels too
+      if (window.__bioclawRefreshProteinViewerLang) window.__bioclawRefreshProteinViewerLang();
       var traceDrawerTitleEl = document.getElementById('traceDrawerTitle');
       if (traceDrawerTitleEl) traceDrawerTitleEl.textContent = (t.tabTrace || 'Lab trace');
       var lblPaletteEl = document.getElementById('lblPalette');
@@ -1487,7 +1513,10 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
     }
 
     function traceListQuery() {
-      var g = groupSel.value;
+      // Default to the current chat's workspace folder when groupSel hasn't been
+      // populated yet (page load). Otherwise loadTrace would fetch events from
+      // ALL groups, showing leftover trace from previous conversations.
+      var g = groupSel.value || workspaceFolderForChat(chatJid);
       var q = '/api/trace/list?limit=400' + (g ? '&group_folder=' + encodeURIComponent(g) : '');
       // Both modes hide the noisy stream_output chunks. Thinking + tool_use steps
       // are kept in BOTH modes so the user can see *what kind* of step happened.
@@ -1504,20 +1533,35 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
       renderList(data.events || []);
     }
 
+    function wsFileBadge(name) {
+      var ext = (name.split('.').pop() || '').toLowerCase();
+      if (THREE_D_EXTS.indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-3d">🧬 3D</span>';
+      if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-img">IMG</span>';
+      if (ext === 'pdf') return '<span class="ws-badge ws-badge-pdf">PDF</span>';
+      if (['fasta', 'fa', 'fna', 'faa', 'fastq', 'fq'].indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-doc">SEQ</span>';
+      if (['csv', 'tsv', 'xlsx', 'parquet'].indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-doc">TBL</span>';
+      return '';
+    }
+
     async function loadTree() {
       var g = groupSel.value;
       if (!g) { treeEl.textContent = T().treePick; return; }
       var res = await fetch('/api/workspace/tree?group_folder=' + encodeURIComponent(g), { headers: authHeaders() });
       if (!res.ok) { treeEl.textContent = T().loadFail; return; }
       var data = await res.json();
-      function nodeHtml(n) {
+      function nodeHtml(n, parentPath) {
+        parentPath = parentPath || '';
+        var fullPath = parentPath ? parentPath + '/' + n.name : n.name;
         if (n.type === 'dir') {
-          var inner = (n.children || []).map(nodeHtml).join('');
+          var inner = (n.children || []).map(function (c) { return nodeHtml(c, fullPath); }).join('');
           return '<details open><summary>' + esc(n.name) + '/</summary><div>' + inner + '</div></details>';
         }
-        return '<div>· ' + esc(n.name) + '</div>';
+        var url = '/files/' + fullPath.split('/').map(encodeURIComponent).join('/');
+        return '<button type="button" class="ws-file-btn" data-ws-url="' + escAttr(url) + '" data-ws-name="' + escAttr(n.name) + '">' +
+          '<span class="ws-file-name">' + esc(n.name) + '</span>' + wsFileBadge(n.name) +
+          '</button>';
       }
-      treeEl.innerHTML = (data.tree || []).map(nodeHtml).join('') || T().treeEmpty;
+      treeEl.innerHTML = (data.tree || []).map(function (n) { return nodeHtml(n, ''); }).join('') || T().treeEmpty;
     }
 
     function ensureTrace() {
@@ -1773,13 +1817,24 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
 
     function showDrawerTrace() {
       if (drawerPaneTrace) drawerPaneTrace.hidden = false;
+      var wsPane = document.getElementById('drawerPaneWorkspace');
+      if (wsPane) wsPane.hidden = true;
       if (drawerPaneFiles) { drawerPaneFiles.hidden = true; if (filesPreviewEl) filesPreviewEl.innerHTML = ''; }
+      activeProteinViewer = null;
       document.body.classList.remove('drawer-preview');
+      document.body.classList.remove('drawer-workspace');
+      var tabT = document.getElementById('drawerTabTrace');
+      var tabW = document.getElementById('drawerTabWorkspace');
+      if (tabT) { tabT.classList.add('is-active'); tabT.setAttribute('aria-selected', 'true'); }
+      if (tabW) { tabW.classList.remove('is-active'); tabW.setAttribute('aria-selected', 'false'); }
       var titleEl = document.getElementById('traceDrawerTitle');
       if (titleEl) titleEl.textContent = T().traceTitle || 'Lab Trace';
     }
     function showDrawerPreview(name) {
       if (drawerPaneTrace) drawerPaneTrace.hidden = true;
+      var wsPane2 = document.getElementById('drawerPaneWorkspace');
+      if (wsPane2) wsPane2.hidden = true;
+      document.body.classList.remove('drawer-workspace');
       if (drawerPaneFiles) drawerPaneFiles.hidden = false;
       document.body.classList.add('drawer-preview');
       if (filesPaneTitle) filesPaneTitle.textContent = name || 'Preview';
@@ -1797,7 +1852,15 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
         var savedRail = localStorage.getItem('bioclaw-rail-w');
         var savedTrace = localStorage.getItem('bioclaw-trace-w');
         if (savedRail && /^\d+$/.test(savedRail)) rootEl.style.setProperty('--rail-w', savedRail + 'px');
-        if (savedTrace && /^\d+$/.test(savedTrace)) rootEl.style.setProperty('--trace-w-user', savedTrace + 'px');
+        // Migration: drawer used to default to 560px (too narrow for V2 preview / workspace).
+        // If user never dragged it wider than that, clear the saved value to pick up new default.
+        if (savedTrace && /^\d+$/.test(savedTrace)) {
+          if (parseInt(savedTrace, 10) < 700) {
+            try { localStorage.removeItem('bioclaw-trace-w'); } catch (_) {}
+          } else {
+            rootEl.style.setProperty('--trace-w-user', savedTrace + 'px');
+          }
+        }
       } catch (_) {}
 
       function bind(handle, side) {
@@ -1862,27 +1925,513 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
      * url: full URL like /files/chat/<jid>/<rel>
      * name: filename for display
      */
+    var THREE_D_EXTS = ['pdb', 'cif', 'mmcif', 'mol2', 'sdf', 'xyz'];
+    var THREE_D_FORMAT = { pdb: 'pdb', cif: 'cif', mmcif: 'cif', mol2: 'mol2', sdf: 'sdf', xyz: 'xyz' };
+
+    // i18n strings for the 3D viewer toolbar — looked up at render time AND on language change.
+    function viewerI18n() {
+      return lang === 'zh' ? {
+        loading: '加载结构…',
+        loadFail: '加载失败：',
+        notLoaded: '3Dmol 未加载，请检查网络',
+        labelStyle: '风格',
+        labelColor: '配色',
+        styleCartoon: '卡通',
+        styleStick: '棒状',
+        styleSphere: '球状',
+        styleLine: '线条',
+        styleBallStick: '球棍',
+        styleSurface: '表面',
+        colorSpectrum: '彩虹',
+        colorChain: '按链',
+        colorBfactor: 'B 因子',
+        colorResidue: '残基',
+        colorSingle: '单色',
+        btnSpin: '自旋',
+        btnBg: '深色',
+        btnReset: '重置',
+        btnPng: '截图',
+        info: function (chains, residues, atoms) {
+          return chains + ' 链 · ' + residues + ' 残基 · ' + atoms + ' 原子';
+        }
+      } : {
+        loading: 'Loading structure…',
+        loadFail: 'Failed to load: ',
+        notLoaded: '3Dmol failed to load — check network',
+        labelStyle: 'Style',
+        labelColor: 'Color',
+        styleCartoon: 'Cartoon',
+        styleStick: 'Stick',
+        styleSphere: 'Sphere',
+        styleLine: 'Line',
+        styleBallStick: 'Ball+Stick',
+        styleSurface: 'Surface',
+        colorSpectrum: 'Spectrum',
+        colorChain: 'By chain',
+        colorBfactor: 'B-factor',
+        colorResidue: 'By residue',
+        colorSingle: 'Mono',
+        btnSpin: 'Spin',
+        btnBg: 'Dark',
+        btnReset: 'Reset',
+        btnPng: 'PNG',
+        info: function (chains, residues, atoms) {
+          return chains + ' chains · ' + residues + ' residues · ' + atoms + ' atoms';
+        }
+      };
+    }
+
+    // Active viewer context — used by applyLang() to refresh button labels on language switch.
+    var activeProteinViewer = null;
+
+    function applyViewerStyle(viewer, styleId, colorId) {
+      if (!viewer || !window.$3Dmol) return;
+      viewer.removeAllSurfaces();
+
+      // Cartoon and non-cartoon styles use slightly different option keys.
+      // Cartoon supports `color: 'spectrum'` for N→C rainbow, but uses `colorscheme`
+      // for chain/residue/B-factor. Non-cartoon (stick/sphere/line) always uses `colorscheme`
+      // or solid `color`.
+      var cartoonOpts, atomOpts;
+      if (colorId === 'bfactor') {
+        var bScheme = { prop: 'b', gradient: 'rwb', min: 0, max: 80 };
+        cartoonOpts = { colorscheme: bScheme };
+        atomOpts = { colorscheme: bScheme };
+      } else if (colorId === 'chain') {
+        cartoonOpts = { colorscheme: 'chain' };
+        atomOpts = { colorscheme: 'chain' };
+      } else if (colorId === 'residue') {
+        cartoonOpts = { colorscheme: 'amino' };
+        atomOpts = { colorscheme: 'amino' };
+      } else if (colorId === 'single') {
+        cartoonOpts = { color: '#7c8aa3' };
+        atomOpts = { color: '#7c8aa3' };
+      } else {
+        // spectrum
+        cartoonOpts = { color: 'spectrum' };
+        atomOpts = { colorscheme: 'cyanCarbon' };
+      }
+
+      switch (styleId) {
+        case 'cartoon':
+          viewer.setStyle({}, { cartoon: cartoonOpts });
+          break;
+        case 'stick':
+          viewer.setStyle({}, { stick: Object.assign({ radius: 0.2 }, atomOpts) });
+          break;
+        case 'sphere':
+          viewer.setStyle({}, { sphere: Object.assign({ scale: 0.32 }, atomOpts) });
+          break;
+        case 'line':
+          viewer.setStyle({}, { line: Object.assign({ linewidth: 1.5 }, atomOpts) });
+          break;
+        case 'ballstick':
+          viewer.setStyle({}, { stick: Object.assign({ radius: 0.13 }, atomOpts), sphere: Object.assign({ scale: 0.22 }, atomOpts) });
+          break;
+        case 'surface':
+          viewer.setStyle({}, { cartoon: cartoonOpts });
+          viewer.addSurface(window.$3Dmol.SurfaceType.VDW, { opacity: 0.65, color: 'white' });
+          break;
+        default:
+          viewer.setStyle({}, { cartoon: cartoonOpts });
+      }
+    }
+
+    function buildViewerToolbar(ctx) {
+      var t = viewerI18n();
+      var tb = ctx.toolbarEl;
+      tb.innerHTML = '';
+
+      // Row: Style selector
+      var rowStyle = document.createElement('div');
+      rowStyle.className = 'files-3d-toolbar-row';
+      var labelStyle = document.createElement('span');
+      labelStyle.className = 'files-3d-toolbar-label';
+      labelStyle.dataset.i18n = 'labelStyle';
+      labelStyle.textContent = t.labelStyle;
+      var selStyle = document.createElement('select');
+      selStyle.className = 'files-3d-select';
+      [
+        ['cartoon', t.styleCartoon],
+        ['stick', t.styleStick],
+        ['sphere', t.styleSphere],
+        ['line', t.styleLine],
+        ['ballstick', t.styleBallStick],
+        ['surface', t.styleSurface],
+      ].forEach(function (pair) {
+        var opt = document.createElement('option');
+        opt.value = pair[0];
+        opt.textContent = pair[1];
+        opt.dataset.i18n = 'style' + pair[0].charAt(0).toUpperCase() + pair[0].slice(1);
+        if (pair[0] === ctx.styleId) opt.selected = true;
+        selStyle.appendChild(opt);
+      });
+      selStyle.addEventListener('change', function () {
+        ctx.styleId = selStyle.value;
+        if (ctx.viewer) { applyViewerStyle(ctx.viewer, ctx.styleId, ctx.colorId); ctx.viewer.render(); }
+      });
+      rowStyle.appendChild(labelStyle);
+      rowStyle.appendChild(selStyle);
+      tb.appendChild(rowStyle);
+
+      // Row: Color selector
+      var rowColor = document.createElement('div');
+      rowColor.className = 'files-3d-toolbar-row';
+      var labelColor = document.createElement('span');
+      labelColor.className = 'files-3d-toolbar-label';
+      labelColor.dataset.i18n = 'labelColor';
+      labelColor.textContent = t.labelColor;
+      var selColor = document.createElement('select');
+      selColor.className = 'files-3d-select';
+      [
+        ['spectrum', t.colorSpectrum],
+        ['chain', t.colorChain],
+        ['bfactor', t.colorBfactor],
+        ['residue', t.colorResidue],
+        ['single', t.colorSingle],
+      ].forEach(function (pair) {
+        var opt = document.createElement('option');
+        opt.value = pair[0];
+        opt.textContent = pair[1];
+        opt.dataset.i18n = 'color' + pair[0].charAt(0).toUpperCase() + pair[0].slice(1);
+        if (pair[0] === ctx.colorId) opt.selected = true;
+        selColor.appendChild(opt);
+      });
+      selColor.addEventListener('change', function () {
+        ctx.colorId = selColor.value;
+        if (ctx.viewer) { applyViewerStyle(ctx.viewer, ctx.styleId, ctx.colorId); ctx.viewer.render(); }
+      });
+      rowColor.appendChild(labelColor);
+      rowColor.appendChild(selColor);
+      tb.appendChild(rowColor);
+
+      // Row: action icon buttons (spin / dark bg / reset / png)
+      var rowBtns = document.createElement('div');
+      rowBtns.className = 'files-3d-icon-btns';
+
+      function makeBtn(id, labelKey, label, onClick) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'files-3d-icon-btn';
+        b.dataset.i18n = labelKey;
+        b.textContent = label;
+        b.addEventListener('click', onClick);
+        return b;
+      }
+
+      var spinBtn = makeBtn('spin', 'btnSpin', t.btnSpin, function () {
+        if (!ctx.viewer) return;
+        ctx.spinning = !ctx.spinning;
+        ctx.viewer.spin(ctx.spinning ? 'y' : false);
+        spinBtn.classList.toggle('is-active', ctx.spinning);
+      });
+      if (ctx.spinning) spinBtn.classList.add('is-active');
+      rowBtns.appendChild(spinBtn);
+
+      var bgBtn = makeBtn('bg', 'btnBg', t.btnBg, function () {
+        if (!ctx.viewer) return;
+        ctx.darkBg = !ctx.darkBg;
+        ctx.viewer.setBackgroundColor(ctx.darkBg ? 'black' : 'white');
+        bgBtn.classList.toggle('is-active', ctx.darkBg);
+        // Icon toolbar gets harder to read on dark bg; bump its background opacity
+        tb.style.background = ctx.darkBg ? 'rgba(20,22,28,0.88)' : 'rgba(255,255,255,0.93)';
+        tb.style.color = ctx.darkBg ? '#e5e7eb' : '';
+      });
+      if (ctx.darkBg) bgBtn.classList.add('is-active');
+      rowBtns.appendChild(bgBtn);
+
+      var resetBtn = makeBtn('reset', 'btnReset', t.btnReset, function () {
+        if (!ctx.viewer) return;
+        ctx.viewer.zoomTo();
+        ctx.viewer.render();
+      });
+      rowBtns.appendChild(resetBtn);
+
+      var pngBtn = makeBtn('png', 'btnPng', t.btnPng, function () {
+        if (!ctx.viewer || typeof ctx.viewer.pngURI !== 'function') return;
+        var dataUri = ctx.viewer.pngURI();
+        var a = document.createElement('a');
+        a.href = dataUri;
+        a.download = (ctx.title || 'structure') + '.png';
+        a.click();
+      });
+      rowBtns.appendChild(pngBtn);
+
+      tb.appendChild(rowBtns);
+
+      // Info chip (chain/residue/atom counts) — only after model loaded
+      if (ctx.info) {
+        var info = document.createElement('div');
+        info.className = 'files-3d-info';
+        info.dataset.i18n = 'info';
+        info.textContent = t.info(ctx.info.chains, ctx.info.residues, ctx.info.atoms);
+        tb.appendChild(info);
+      }
+    }
+
+    /**
+     * Render a 3D molecular structure into `host` (a `.files-preview` element with the actions bar
+     * already appended). Loads structure from `url`, picks format from `ext`.
+     */
+    function renderProteinViewer(host, url, ext, title) {
+      var body = document.createElement('div');
+      body.className = 'files-preview-body files-preview-3d';
+      host.appendChild(body);
+
+      var loading = document.createElement('div');
+      loading.className = 'files-3d-loading';
+      loading.textContent = viewerI18n().loading;
+      body.appendChild(loading);
+
+      if (typeof window.$3Dmol === 'undefined') {
+        loading.textContent = viewerI18n().notLoaded;
+        return;
+      }
+
+      var viewerDiv = document.createElement('div');
+      viewerDiv.className = 'files-3d-viewer';
+      body.appendChild(viewerDiv);
+
+      var toolbarEl = document.createElement('div');
+      toolbarEl.className = 'files-3d-toolbar';
+      body.appendChild(toolbarEl);
+
+      var ctx = {
+        viewer: null,
+        viewerDiv: viewerDiv,
+        toolbarEl: toolbarEl,
+        styleId: 'cartoon',
+        colorId: 'spectrum',
+        spinning: false,
+        darkBg: false,
+        title: title || '',
+        info: null,
+      };
+      activeProteinViewer = ctx;
+      buildViewerToolbar(ctx);
+
+      var format = THREE_D_FORMAT[ext] || 'pdb';
+      // Try to derive a PDB ID from the filename (e.g. "1CRN.pdb" → "1CRN") so we can
+      // auto-fall-back to RCSB when the local file is empty / fake.
+      var derivedPdbId = (function () {
+        var base = (title || '').replace(/\.[^.]+$/, '');
+        return /^[A-Za-z0-9]{4}$/.test(base) ? base.toUpperCase() : null;
+      })();
+
+      function renderModel(text, source) {
+        ctx.viewer = window.$3Dmol.createViewer(viewerDiv, { backgroundColor: 'white' });
+        ctx.viewer.addModel(text, format);
+        applyViewerStyle(ctx.viewer, ctx.styleId, ctx.colorId);
+        ctx.viewer.zoomTo();
+        ctx.viewer.render();
+        try {
+          var atoms = ctx.viewer.selectedAtoms({});
+          var atomCount = atoms.length;
+          var chainSet = {}, resSet = {};
+          atoms.forEach(function (a) {
+            if (a.chain) chainSet[a.chain] = 1;
+            resSet[a.chain + ':' + a.resi] = 1;
+          });
+          ctx.info = { chains: Object.keys(chainSet).length, residues: Object.keys(resSet).length, atoms: atomCount, source: source };
+          return atomCount;
+        } catch (_) { return 0; }
+      }
+
+      function showFallback(reason) {
+        // Display a banner-style overlay over the (possibly partial) viewer with an
+        // optional "Load real X from RCSB" button. The overlay is dismissible so users
+        // can still inspect the partial structure if they want.
+        var msg;
+        if (reason === 'empty') {
+          msg = lang === 'zh'
+            ? '本地文件没有原子坐标（agent 可能写了 PDB 摘要 stub，没真正下载）'
+            : 'The local file has no atom coordinates (the agent likely wrote a PDB summary stub).';
+        } else if (reason === 'no-ss') {
+          msg = lang === 'zh'
+            ? '本地文件缺少二级结构记录（HELIX/SHEET），cartoon 视图会画不出 ribbon。建议从 RCSB 拉真版本。'
+            : 'The local file is missing secondary-structure records (HELIX/SHEET); cartoon ribbons cannot render. Try the real RCSB version.';
+        } else if (reason === 'too-few-atoms') {
+          msg = lang === 'zh'
+            ? '本地文件只有少量原子坐标，可能是 agent 编造的不完整 PDB。建议从 RCSB 拉真版本。'
+            : 'The local file has too few atoms — likely a fabricated/incomplete PDB. Try the real RCSB version.';
+        } else {
+          return;
+        }
+        var btnLabel = derivedPdbId
+          ? (lang === 'zh' ? '从 RCSB 加载真实 ' + derivedPdbId + ' 结构' : 'Load real ' + derivedPdbId + ' from RCSB')
+          : '';
+        var dismissLabel = lang === 'zh' ? '忽略' : 'Dismiss';
+        var html = '<div class="files-3d-empty"><p>' + esc(msg) + '</p><div class="files-3d-empty-actions">';
+        if (derivedPdbId) {
+          html += '<button type="button" class="files-3d-fetch-rcsb" data-pdb="' + escAttr(derivedPdbId) + '">' + esc(btnLabel) + '</button>';
+        }
+        html += '<button type="button" class="files-3d-dismiss">' + esc(dismissLabel) + '</button>';
+        html += '</div></div>';
+        body.insertAdjacentHTML('beforeend', html);
+        var fetchBtn = body.querySelector('.files-3d-fetch-rcsb');
+        if (fetchBtn) {
+          fetchBtn.addEventListener('click', function () {
+            if (window.__bioclawLoadPdbById) window.__bioclawLoadPdbById(derivedPdbId);
+          });
+        }
+        var dismissBtn = body.querySelector('.files-3d-dismiss');
+        if (dismissBtn) {
+          dismissBtn.addEventListener('click', function () {
+            var box = body.querySelector('.files-3d-empty');
+            if (box) box.remove();
+          });
+        }
+      }
+
+      fetch(url)
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.text();
+        })
+        .then(function (text) {
+          loading.remove();
+          // Heuristics for PDB files: warn if the file looks fabricated/incomplete
+          var ssCount = 0;
+          if (format === 'pdb') {
+            var lines = text.split('\n');
+            for (var i = 0; i < lines.length; i++) {
+              var l = lines[i];
+              if (l.indexOf('HELIX') === 0 || l.indexOf('SHEET') === 0) ssCount++;
+            }
+          }
+          var count = renderModel(text, 'local');
+          buildViewerToolbar(ctx);
+          if (count === 0) {
+            showFallback('empty');
+          } else if (format === 'pdb') {
+            // Cartoon needs HELIX/SHEET records to draw ribbons. If missing, even
+            // a real-looking PDB will render as just a thin trace (or nothing).
+            if (ssCount === 0) showFallback('no-ss');
+            else if (count < 50) showFallback('too-few-atoms');
+          }
+        })
+        .catch(function (e) {
+          loading.textContent = viewerI18n().loadFail + (e && e.message || e);
+        });
+    }
+
+    // Refresh the active viewer's toolbar labels when language changes
+    function refreshActiveProteinViewerLang() {
+      if (activeProteinViewer && activeProteinViewer.toolbarEl) {
+        buildViewerToolbar(activeProteinViewer);
+      }
+    }
+    window.__bioclawRefreshProteinViewerLang = refreshActiveProteinViewerLang;
+
+    /**
+     * Load a structure directly from RCSB by PDB ID (e.g. "1CRN").
+     * Opens the drawer's preview pane and renders 3D viewer.
+     */
+    function loadPdbById(rawId) {
+      if (!rawId) return;
+      var id = String(rawId).trim().toUpperCase();
+      if (!/^[A-Z0-9]{4}$/.test(id)) {
+        alert(lang === 'zh' ? 'PDB ID 应为 4 位字母 / 数字（如 1CRN）' : 'PDB ID must be 4 alphanumeric characters (e.g. 1CRN)');
+        return;
+      }
+      if (!filesPreviewEl) return;
+      if (!document.body.classList.contains('trace-open')) openTracePanel();
+      showDrawerPreview(id + '.pdb · RCSB');
+      var url = 'https://files.rcsb.org/view/' + id + '.pdb';
+      var rcsbUrl = 'https://www.rcsb.org/structure/' + id;
+      var actions =
+        '<div class="files-preview-actions-bar">' +
+          '<span class="files-preview-path">PDB · ' + esc(id) + '</span>' +
+          '<a class="file-button" href="' + escAttr(rcsbUrl) + '" target="_blank" rel="noreferrer">RCSB</a>' +
+          '<a class="file-button" href="' + escAttr(url) + '" target="_blank" rel="noreferrer">' + esc(T().openFile || 'Open') + '</a>' +
+          '<a class="file-button" href="' + escAttr(url) + '" download>' + esc(T().download || 'Download') + '</a>' +
+        '</div>';
+      filesPreviewEl.innerHTML = actions;
+      renderProteinViewer(filesPreviewEl, url, 'pdb');
+    }
+    window.__bioclawLoadPdbById = loadPdbById;
+
+    /* ──────── Drawer tabs: Trace / Workspace ──────── */
+    var drawerPaneWorkspace = document.getElementById('drawerPaneWorkspace');
+    var drawerTabTrace = document.getElementById('drawerTabTrace');
+    var drawerTabWorkspace = document.getElementById('drawerTabWorkspace');
+
+    function showDrawerWorkspace() {
+      if (drawerPaneTrace) drawerPaneTrace.hidden = true;
+      if (drawerPaneWorkspace) drawerPaneWorkspace.hidden = false;
+      if (drawerPaneFiles) { drawerPaneFiles.hidden = true; if (filesPreviewEl) filesPreviewEl.innerHTML = ''; }
+      activeProteinViewer = null;
+      document.body.classList.remove('drawer-preview');
+      document.body.classList.add('drawer-workspace');
+      if (drawerTabTrace) { drawerTabTrace.classList.remove('is-active'); drawerTabTrace.setAttribute('aria-selected', 'false'); }
+      if (drawerTabWorkspace) { drawerTabWorkspace.classList.add('is-active'); drawerTabWorkspace.setAttribute('aria-selected', 'true'); }
+    }
+    if (drawerTabTrace) drawerTabTrace.addEventListener('click', showDrawerTrace);
+    if (drawerTabWorkspace) drawerTabWorkspace.addEventListener('click', showDrawerWorkspace);
+
+    /* ──────── Workspace tree click: open files in preview drawer ──────── */
+    if (drawerPaneWorkspace) {
+      drawerPaneWorkspace.addEventListener('click', function (event) {
+        var btn = event.target && event.target.closest ? event.target.closest('.ws-file-btn') : null;
+        if (!btn) return;
+        event.preventDefault();
+        var url = btn.getAttribute('data-ws-url');
+        var name = btn.getAttribute('data-ws-name') || 'file';
+        if (url && window.__bioclawOpenFileInDrawer) {
+          window.__bioclawOpenFileInDrawer(url, name);
+        }
+      });
+    }
+
+    /* ──────── Workspace 3D loader: PDB ID input + chip shortcuts ──────── */
+    var ws3dForm = document.getElementById('ws3dLoaderForm');
+    var ws3dInput = document.getElementById('ws3dInput');
+    if (ws3dForm) {
+      ws3dForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (ws3dInput && ws3dInput.value) loadPdbById(ws3dInput.value);
+      });
+    }
+    if (drawerPaneWorkspace) {
+      drawerPaneWorkspace.addEventListener('click', function (event) {
+        var chip = event.target && event.target.closest ? event.target.closest('.workspace-3d-chip') : null;
+        if (!chip) return;
+        event.preventDefault();
+        var pdbId = chip.getAttribute('data-pdb');
+        if (pdbId) {
+          if (ws3dInput) ws3dInput.value = pdbId;
+          loadPdbById(pdbId);
+        }
+      });
+    }
+
     async function openFileInDrawer(url, name) {
       if (!filesPreviewEl) return;
       // Open the right drawer if not already open
       if (!document.body.classList.contains('trace-open')) openTracePanel();
       showDrawerPreview(name);
       var ext = (name.split('.').pop() || '').toLowerCase();
+      var is3D = THREE_D_EXTS.indexOf(ext) >= 0;
       var isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].indexOf(ext) >= 0;
       var isPdf = ext === 'pdf';
-      var isText = ['py', 'js', 'ts', 'sh', 'json', 'yaml', 'yml', 'css', 'html', 'md', 'txt', 'log', 'csv', 'tsv'].indexOf(ext) >= 0;
+      var isText = ['py', 'js', 'ts', 'sh', 'json', 'yaml', 'yml', 'css', 'html', 'md', 'txt', 'log', 'csv', 'tsv', 'fasta', 'fa', 'fastq', 'fq', 'gff', 'gtf', 'bed', 'vcf'].indexOf(ext) >= 0;
       var actions =
         '<div class="files-preview-actions-bar">' +
           '<span class="files-preview-path" title="' + escAttr(name) + '">' + esc(name) + '</span>' +
-          '<a class="file-button" href="' + escAttr(url) + '" target="_blank" rel="noreferrer">Open</a>' +
-          '<a class="file-button" href="' + escAttr(url) + '" download>Download</a>' +
+          '<a class="file-button" href="' + escAttr(url) + '" target="_blank" rel="noreferrer">' + esc(T().openFile || 'Open') + '</a>' +
+          '<a class="file-button" href="' + escAttr(url) + '" download>' + esc(T().download || 'Download') + '</a>' +
         '</div>';
+      if (is3D) {
+        filesPreviewEl.innerHTML = actions;
+        renderProteinViewer(filesPreviewEl, url, ext);
+        return;
+      }
       if (isImage) {
         filesPreviewEl.innerHTML = actions + '<div class="files-preview-body files-preview-image"><img src="' + escAttr(url) + '" alt="' + escAttr(name) + '"></div>';
         return;
       }
       if (isPdf) {
-        filesPreviewEl.innerHTML = actions + '<div class="files-preview-body"><iframe src="' + escAttr(url) + '" style="width:100%;height:100%;min-height:400px;border:0;border-radius:8px;background:#fff;"></iframe></div>';
+        filesPreviewEl.innerHTML = actions + '<div class="files-preview-body"><iframe src="' + escAttr(url) + '"></iframe></div>';
         return;
       }
       if (isText) {
@@ -2243,6 +2792,9 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
           // bubble in-place (lines ~2005-2037). This avoids the "bubble
           // disappears, full answer pops in later" flicker.
           await refreshMessages();
+          // Refresh the workspace tree so any new files the agent saved show up
+          // (e.g. a downloaded .pdb appears in the Workspace tab without manual reload)
+          try { if (typeof loadTree === 'function') loadTree(); } catch (_) {}
         }
       } catch (e) {}
     }
@@ -2274,6 +2826,10 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
           '<button type="button" class="welcome-suggestion" data-prompt="' + escAttr('查 PubMed 找 2024 年以后 CRISPR off-target 相关的高引论文') + '">' +
             '<div class="welcome-suggestion-title">' + esc(t.suggestPubmedTitle) + '</div>' +
             '<div class="welcome-suggestion-desc">' + esc(t.suggestPubmedDesc) + '</div>' +
+          '</button>' +
+          '<button type="button" class="welcome-suggestion is-feature" data-prompt="' + escAttr('帮我下载 1CRN（crambin）的 PDB 文件到工作区，并简要介绍它的来源、功能和结构特点。下载后我点击文件可以直接看 3D 结构。') + '">' +
+            '<div class="welcome-suggestion-title">' + esc(t.suggest3dTitle || '🧬 蛋白 3D 结构') + '</div>' +
+            '<div class="welcome-suggestion-desc">' + esc(t.suggest3dDesc || '点击填入提示词；发出后 agent 会下载 PDB 文件，点击文件即可 3D 预览') + '</div>' +
           '</button>' +
         '</div>';
       welcomeHeroEl.addEventListener('click', function (event) {

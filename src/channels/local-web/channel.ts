@@ -129,6 +129,31 @@ function isSafeRelativePath(relativePath: string): boolean {
   return normalized.length > 0 && !normalized.startsWith('..');
 }
 
+/**
+ * Resolve `relativePath` under `workspaceRoot`, falling back to a case-insensitive match
+ * per path segment if the exact case isn't on disk. Returns the resolved absolute path or
+ * null if no match. Used because agent-generated URLs sometimes mismatch file casing
+ * (e.g. URL says `1CRN.pdb` but file is saved as `1crn.pdb`).
+ */
+function resolveFileCaseInsensitive(workspaceRoot: string, relativePath: string): string | null {
+  const segments = relativePath.split('/').filter((s) => s.length > 0);
+  let current = workspaceRoot;
+  for (const seg of segments) {
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(current);
+    } catch {
+      return null;
+    }
+    const exact = entries.indexOf(seg) >= 0 ? seg : undefined;
+    const lower = seg.toLowerCase();
+    const ci = exact || entries.find((e) => e.toLowerCase() === lower);
+    if (!ci) return null;
+    current = path.join(current, ci);
+  }
+  return current;
+}
+
 export class LocalWebChannel implements Channel {
   name = 'local-web';
   prefixAssistantName = true;
@@ -293,6 +318,13 @@ export class LocalWebChannel implements Channel {
       res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
       res.setHeader('Cache-Control', 'public, max-age=86400');
       res.end(getWebVendorScripts().purify);
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/vendor/3Dmol-min.js') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.end(getWebVendorScripts().threeDmol);
       return;
     }
 
@@ -507,14 +539,18 @@ export class LocalWebChannel implements Channel {
         return;
       }
       const workspaceRoot = path.join(GROUPS_DIR, this.resolveWorkspaceFolder(chatJid));
-      const absolutePath = path.join(workspaceRoot, relativePath);
+      let absolutePath = path.join(workspaceRoot, relativePath);
       if (!absolutePath.startsWith(workspaceRoot)) {
         sendJson(res, 403, { error: 'Forbidden' });
         return;
       }
       if (!fs.existsSync(absolutePath)) {
-        sendJson(res, 404, { error: 'File not found' });
-        return;
+        const ciResolved = resolveFileCaseInsensitive(workspaceRoot, relativePath);
+        if (!ciResolved) {
+          sendJson(res, 404, { error: 'File not found' });
+          return;
+        }
+        absolutePath = ciResolved;
       }
       const ext = path.extname(absolutePath).toLowerCase();
       const mimeTypes: Record<string, string> = {
@@ -539,14 +575,18 @@ export class LocalWebChannel implements Channel {
         return;
       }
       const workspaceRoot = path.join(GROUPS_DIR, this.resolveWorkspaceFolder(LOCAL_WEB_GROUP_JID));
-      const absolutePath = path.join(workspaceRoot, relativePath);
+      let absolutePath = path.join(workspaceRoot, relativePath);
       if (!absolutePath.startsWith(workspaceRoot)) {
         sendJson(res, 403, { error: 'Forbidden' });
         return;
       }
       if (!fs.existsSync(absolutePath)) {
-        sendJson(res, 404, { error: 'File not found' });
-        return;
+        const ciResolved = resolveFileCaseInsensitive(workspaceRoot, relativePath);
+        if (!ciResolved) {
+          sendJson(res, 404, { error: 'File not found' });
+          return;
+        }
+        absolutePath = ciResolved;
       }
       const ext = path.extname(absolutePath).toLowerCase();
       const mimeTypes: Record<string, string> = {

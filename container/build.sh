@@ -1,5 +1,11 @@
 #!/bin/bash
-# Build the BioClaw agent container image
+# Build the BioClaw agent container image.
+#
+# Two-stage build:
+#   1. Base image (Dockerfile)        — bio CLI tools + Node agent runner
+#   2. Viz overlay (Dockerfile.viz)   — Python plotting libs + SSL CA path fix
+#
+# Both are tagged as bioclaw-agent:<tag> at the end.
 
 set -e
 
@@ -9,11 +15,12 @@ cd "$SCRIPT_DIR"
 IMAGE_NAME="bioclaw-agent"
 TAG="${1:-latest}"
 
-echo "Building BioClaw agent container image..."
-echo "Image: ${IMAGE_NAME}:${TAG}"
-
-# Build with Docker
+echo "[1/2] Building base image: ${IMAGE_NAME}:${TAG} (Dockerfile)"
 docker build -t "${IMAGE_NAME}:${TAG}" .
+
+echo ""
+echo "[2/2] Overlaying Python + SSL fix: ${IMAGE_NAME}:${TAG} (Dockerfile.viz)"
+docker build -f Dockerfile.viz -t "${IMAGE_NAME}:${TAG}" .
 
 echo ""
 echo "Build complete!"

@@ -18,6 +18,14 @@ COPY --from=python-stage /usr/lib/x86_64-linux-gnu/ossl-modules /usr/lib/x86_64-
 COPY --from=python-stage /etc/ssl/certs /etc/ssl/certs
 COPY --from=python-stage /usr/share/ca-certificates /usr/share/ca-certificates
 
+# Python's libssl was built expecting CA certs at /usr/lib/ssl/cert.pem (env-overridable).
+# We have certs at /etc/ssl/certs/ca-certificates.crt (copied above) — point Python's SSL
+# module + any future curl/wget calls there so HTTPS verification works.
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_DIR=/etc/ssl/certs
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+
 # Rebuild agent-runner with latest source
 WORKDIR /app
 COPY agent-runner/ ./

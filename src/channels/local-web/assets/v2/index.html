@@ -9,6 +9,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/v2/style.css">
+  <!-- 3Dmol.js for protein structure rendering (PDB / mmCIF / MOL2 / SDF / XYZ).
+       Served locally from node_modules/3dmol so no internet is required at runtime. -->
+  <script src="/vendor/3Dmol-min.js" defer></script>
 </head>
 <body>
   <div class="unified-root" id="unifiedRoot">
@@ -109,7 +112,16 @@
       <!-- COL 3: Trace panel (hidden by default, inline column when open) -->
       <aside class="trace-panel" id="panelTrace" aria-label="Lab trace">
         <div class="trace-head">
-          <h2 id="traceDrawerTitle"></h2>
+          <div class="drawer-tabs" role="tablist">
+            <button type="button" class="drawer-tab is-active" id="drawerTabTrace" role="tab" aria-selected="true" data-pane="trace">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v7.527a3 3 0 0 1-.46 1.597L3.42 17.596A2 2 0 0 0 5.1 20.69h13.8a2 2 0 0 0 1.68-3.095l-4.12-6.47A3 3 0 0 1 16 9.527V2"/><line x1="7" y1="2" x2="17" y2="2"/></svg>
+              <span id="drawerTabTraceLabel">Trace</span>
+            </button>
+            <button type="button" class="drawer-tab" id="drawerTabWorkspace" role="tab" aria-selected="false" data-pane="workspace">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <span id="drawerTabWorkspaceLabel">Workspace</span>
+            </button>
+          </div>
           <button type="button" class="icon-btn" id="closeTrace" aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -129,11 +141,32 @@
             </div>
           </div>
           <div id="timeline" class="timeline"></div>
-          <aside class="trace-sidebar">
-            <strong class="sidebar-title" id="i18n-sidebar-title"></strong>
-            <p class="sidebar-hint" id="i18n-sidebar-hint"></p>
-            <div id="tree" class="tree"></div>
-          </aside>
+        </div>
+        <div class="workspace-pane" id="drawerPaneWorkspace" hidden>
+          <div class="workspace-toolbar">
+            <strong class="workspace-title" id="i18n-sidebar-title">Workspace</strong>
+            <span class="workspace-hint" id="i18n-sidebar-hint"></span>
+          </div>
+          <div class="workspace-3d-loader">
+            <div class="workspace-3d-loader-head">
+              <span class="workspace-3d-loader-icon" aria-hidden="true">🧬</span>
+              <strong class="workspace-3d-loader-title" id="ws3dLoaderTitle">蛋白 3D 结构</strong>
+              <span class="workspace-3d-loader-hint" id="ws3dLoaderHint">输入 PDB ID 或点击示例</span>
+            </div>
+            <form class="workspace-3d-loader-row" id="ws3dLoaderForm">
+              <input type="text" id="ws3dInput" maxlength="4" placeholder="1CRN" autocomplete="off" spellcheck="false" />
+              <button type="submit" class="primary subtle" id="ws3dLoadBtn">Load</button>
+            </form>
+            <div class="workspace-3d-chips">
+              <button type="button" class="workspace-3d-chip" data-pdb="1CRN" title="Crambin">1CRN</button>
+              <button type="button" class="workspace-3d-chip" data-pdb="4HHB" title="Hemoglobin">4HHB</button>
+              <button type="button" class="workspace-3d-chip" data-pdb="6VXX" title="SARS-CoV-2 spike">6VXX</button>
+              <button type="button" class="workspace-3d-chip" data-pdb="1A3N" title="Deoxyhemoglobin">1A3N</button>
+              <button type="button" class="workspace-3d-chip" data-pdb="2HHB" title="Hemoglobin">2HHB</button>
+              <button type="button" class="workspace-3d-chip" data-pdb="1IGT" title="Antibody (IgG)">1IGT</button>
+            </div>
+          </div>
+          <div id="tree" class="workspace-tree"></div>
         </div>
         <div class="files-pane" id="drawerPaneFiles" hidden>
           <div class="files-toolbar">

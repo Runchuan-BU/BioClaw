@@ -421,7 +421,7 @@ body.trace-open .trace-open-btn {
 
 /* Column toggles via body classes */
 body.rail-collapsed { --rail-w: 0px; }
-body.trace-open     { --trace-w: var(--trace-w-user, min(560px, 45vw)); }
+body.trace-open     { --trace-w: var(--trace-w-user, min(900px, 55vw)); }
 body:not(.trace-open) #resizerTrace { display: none; }
 body.rail-collapsed #resizerRail { display: none; }
 
@@ -1433,6 +1433,7 @@ textarea::placeholder { color: var(--muted-soft); }
   flex-direction: column;
   overflow: hidden;
 }
+.trace-panel .trace-main[hidden] { display: none; }
 .trace-conn-pill {
   flex-shrink: 0;
   border-top: 1px solid var(--border);
@@ -1441,9 +1442,140 @@ textarea::placeholder { color: var(--muted-soft); }
   color: var(--muted);
 }
 
-/* When previewing a file, hide the trace header to give max space */
+/* When previewing a file, hide the trace header (tabs) to give max space */
 body.drawer-preview .trace-head { display: none; }
 body.drawer-preview .trace-conn-pill { display: none; }
+
+/* ──────── Drawer-level Trace / Workspace tabs ──────── */
+.drawer-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+.drawer-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.drawer-tab svg { width: 14px; height: 14px; }
+.drawer-tab:hover { color: var(--ink); }
+.drawer-tab.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+.drawer-tab.is-active svg { stroke: #fff; }
+
+/* ──────── Workspace pane (full-drawer file tree) ──────── */
+.workspace-pane {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.workspace-pane[hidden] { display: none; }
+.workspace-toolbar {
+  flex-shrink: 0;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.workspace-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+.workspace-hint {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.workspace-tree {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.workspace-tree details { margin: 2px 0; }
+.workspace-tree summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 3px 4px;
+  border-radius: 4px;
+  user-select: none;
+}
+.workspace-tree summary:hover { background: var(--surface-raised); }
+.workspace-tree details > div { padding-left: 16px; border-left: 1px dashed var(--border); margin-left: 6px; }
+
+.ws-file-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background .12s;
+}
+.ws-file-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.ws-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-badge {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+.ws-badge-3d  { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.ws-badge-img { background: color-mix(in srgb, #06b6d4 18%, transparent); color: #0891b2; }
+.ws-badge-pdf { background: color-mix(in srgb, #f59e0b 22%, transparent); color: #b45309; }
+.ws-badge-doc { background: color-mix(in srgb, #6366f1 18%, transparent); color: #4f46e5; }
+
+/* Welcome suggestion card variant for "view 3D structure" — visually call out the new feature */
+.welcome-suggestion.is-feature {
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  position: relative;
+}
+.welcome-suggestion.is-feature::before {
+  content: 'NEW';
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.welcome-suggestion.is-feature:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: var(--accent);
+}
 
 /* ──────── Files pane (drawer preview, opens when clicking files in chat) ──────── */
 .files-pane {
@@ -1652,14 +1784,25 @@ body.drawer-preview .trace-conn-pill { display: none; }
 }
 .files-preview-image {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
+  padding: 12px;
 }
 .files-preview-image img {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
-  height: auto;
+  max-height: 100%;
+  object-fit: contain;
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
+}
+.files-preview-body iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: #fff;
 }
 .files-preview-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1673,7 +1816,257 @@ body.drawer-preview .trace-conn-pill { display: none; }
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   overflow: auto;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
 }
+
+/* ──────── 3D protein viewer (PDB / mmCIF / MOL2 / SDF / XYZ) ──────── */
+.files-preview-3d {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  background: #fff;
+  padding: 0;
+  overflow: hidden;
+}
+.files-3d-viewer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.files-3d-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.93);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(8px);
+  font-size: 11.5px;
+  max-width: 240px;
+}
+.files-3d-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.files-3d-toolbar-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: 38px;
+  flex-shrink: 0;
+}
+.files-3d-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.files-3d-icon-btns {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.files-3d-icon-btn {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background .12s, color .12s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.files-3d-icon-btn:hover { background: var(--surface-raised); color: var(--ink); }
+.files-3d-icon-btn.is-active { background: var(--accent); color: #fff; }
+.files-3d-info {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 4px 0 0;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+.files-3d-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.files-3d-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  background: color-mix(in srgb, var(--warn) 5%, var(--surface));
+  z-index: 6;
+}
+.files-3d-empty p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+  max-width: 480px;
+}
+.files-3d-empty-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.files-3d-fetch-rcsb {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 18px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: filter .12s;
+}
+.files-3d-fetch-rcsb:hover { filter: brightness(1.1); }
+.files-3d-dismiss {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.files-3d-dismiss:hover { background: var(--surface-raised); }
+
+/* ──────── Workspace 3D loader (input + chips, top of Workspace pane) ──────── */
+.workspace-3d-loader {
+  flex-shrink: 0;
+  padding: 12px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+.workspace-3d-loader-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.workspace-3d-loader-icon { font-size: 16px; }
+.workspace-3d-loader-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.workspace-3d-loader-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+.workspace-3d-loader-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.workspace-3d-loader-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.workspace-3d-loader-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.workspace-3d-loader-row button {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.workspace-3d-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.workspace-3d-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.workspace-3d-chip:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* "Load PDB" button in header */
+.btn-load-pdb {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.btn-load-pdb:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.btn-load-pdb svg { width: 14px; height: 14px; }
 
 /* ─────────── Lab trace panel (inside drawer) ─────────── */
 
@@ -1721,14 +2114,9 @@ body.drawer-preview .trace-conn-pill { display: none; }
   min-height: 0;
   overflow-y: auto;
 }
-.trace-sidebar {
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
-  padding: 12px 16px;
-  max-height: 35%;
-  overflow-y: auto;
-  background: color-mix(in srgb, var(--surface-raised) 50%, transparent);
-}
+/* Legacy: trace-sidebar was a cramped 35% panel inside trace-main.
+   Workspace is now its own full-drawer pane (drawerPaneWorkspace). */
+.trace-sidebar { display: none; }
 
 /* Trace task cards / process steps */
 .task-card { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; background: var(--surface); overflow: hidden; }
