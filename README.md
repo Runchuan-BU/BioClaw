@@ -198,7 +198,7 @@ OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_MODEL=deepseek/deepseek-chat-v3.1
 ```
 
-Popular model IDs: `deepseek/deepseek-chat-v3.1`, `google/gemini-2.5-flash`, `anthropic/claude-3.5-sonnet`. Full list: [openrouter.ai/models](https://openrouter.ai/models)
+Popular model IDs: `deepseek/deepseek-chat-v3.1`, `deepseek/deepseek-v4-pro`, `google/gemini-2.5-flash`, `anthropic/claude-3.5-sonnet`. Full list: [openrouter.ai/models](https://openrouter.ai/models)
 
 **Note:** Use models that support [tool calling](https://openrouter.ai/models?supported_parameters=tools) (e.g. DeepSeek, Gemini, Claude). Session history is preserved within a container session; after idle timeout, a new container starts with a fresh context.
 
