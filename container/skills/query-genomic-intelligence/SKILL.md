@@ -1,18 +1,18 @@
 ---
 name: query-genomic-intelligence
-description: Predict regulatory features, gene structure, and expression directly from DNA sequence using Genomic Intelligence's hosted transformer DNA models — no local GPU. Use when the user has a gene symbol, genomic region, or DNA/FASTA sequence and wants promoter, splice-site, enhancer, chromatin, expression (log TPM), or de-novo gene annotation predictions. Triggers on "genomic intelligence", "promoter prediction", "splice site", "enhancer activity", "chromatin state", "expression from sequence", "log TPM", "gene annotation", "DNA language model", "genomicintelligence.ai".
+description: Predict regulatory features, gene structure, and expression directly from DNA sequence using Genomic Intelligence's hosted transformer DNA models - no local GPU. Use when the user has a gene symbol, genomic region, or DNA/FASTA sequence and wants promoter, splice-site, enhancer, chromatin, expression (log TPM), or de-novo gene annotation predictions. Triggers on "genomic intelligence", "promoter prediction", "splice site", "enhancer activity", "chromatin state", "expression from sequence", "log TPM", "gene annotation", "DNA language model", "genomicintelligence.ai".
 ---
 
-# Genomic Intelligence — DNA Sequence Models
+# Genomic Intelligence - DNA Sequence Models
 
 Genomic Intelligence (GI) serves transformer DNA language models over six
 sequence-analysis tasks on managed GPUs. Give it a **gene symbol**, a **genomic
 region**, or a **DNA/FASTA sequence**; it returns structured predictions.
-Nothing runs locally — no model weights, no GPU. It is a thin client over a
+Nothing runs locally - no model weights, no GPU. It is a thin client over a
 hosted, versioned inference API.
 
-Docs: https://docs.genomicintelligence.ai · REST contract at
-https://api.genomicintelligence.ai/v1/openapi.json · hosted MCP server at
+Docs: https://docs.genomicintelligence.ai | REST contract at
+https://api.genomicintelligence.ai/v1/openapi.json | hosted MCP server at
 `https://mcp.genomicintelligence.ai/mcp`.
 
 > For research and development use, **not clinical or diagnostic decisions**.
@@ -21,21 +21,21 @@ https://api.genomicintelligence.ai/v1/openapi.json · hosted MCP server at
 
 Use GI when the user has DNA and wants a model prediction:
 
-- **promoter** — promoter regions in a genomic region (sliding window)
-- **splice** — donor/acceptor splice sites
-- **enhancer** — developmental & housekeeping enhancer activity (DeepSTARR)
-- **chromatin** — chromatin state across hundreds of tracks (DeepSEA)
-- **expression** — sequence-to-expression, log(TPM+1), with a cell-type context
-- **annotation** — de-novo gene/transcript annotation (async)
-- **composite** — find the genes in a region and predict each one's expression
+- **promoter** - promoter regions in a genomic region (sliding window)
+- **splice** - donor/acceptor splice sites
+- **enhancer** - developmental & housekeeping enhancer activity (DeepSTARR)
+- **chromatin** - chromatin state across hundreds of tracks (DeepSEA)
+- **expression** - sequence-to-expression, log(TPM+1), with a cell-type context
+- **annotation** - de-novo gene/transcript annotation (async)
+- **composite** - find the genes in a region and predict each one's expression
 
-Not for local alignment, variant calling, or file I/O — use a local tool
+Not for local alignment, variant calling, or file I/O - use a local tool
 (BioPython, bcftools) for those. GI is for **model inference from sequence**.
 
 ## Access and Authentication
 
 - The **hosted MCP server** (`https://mcp.genomicintelligence.ai/mcp`, Streamable
-  HTTP) works **keyless** against a capped public demo quota — prefer it on hosts
+  HTTP) works **keyless** against a capped public demo quota - prefer it on hosts
   that support MCP. An optional `gi_` bearer key raises the quota.
 - The **REST `/v1` API requires** a `GI_API_KEY` (a `gi_` bearer), sent as
   `Authorization: Bearer <key>`. Request one at contact@genomicintelligence.ai.
@@ -53,25 +53,26 @@ envelope.
 
 | Task | Mode | Length bound | Notes |
 |---|---|---|---|
-| `promoter` | sync | 1–500,000 bp | sliding-window promoter regions |
-| `splice` | sync | 1–500,000 bp | donor/acceptor sites (BigBird) |
-| `enhancer` | sync | 1–500,000 bp | dev + housekeeping (DeepSTARR, *Drosophila*) |
-| `chromatin` | sync | 1–500,000 bp | hundreds of tracks (DeepSEA) |
+| `promoter` | sync | 1-500,000 bp | sliding-window promoter regions |
+| `splice` | sync | 1-500,000 bp | donor/acceptor sites (BigBird) |
+| `enhancer` | sync | 1-500,000 bp | dev + housekeeping (DeepSTARR, *Drosophila*) |
+| `chromatin` | sync | 1-500,000 bp | hundreds of tracks (DeepSEA) |
 | `expression` | sync | **exactly 9,198 bp** | log(TPM+1); needs a cell-type `description` |
-| `annotation` | **async** | 1–500,000 bp | de-novo transcripts; submit + poll |
+| `annotation` | **async** | 1-500,000 bp | de-novo transcripts; submit + poll |
 
 Two hard rules the model enforces:
 
-- **`expression` needs exactly 9,198 bp**, centred on the TSS (2 × 4,599). Any
-  other length is rejected — build it from the canonical transcript's TSS, don't
+- **`expression` needs exactly 9,198 bp**, centred on the TSS (4,599 upstream +
+  TSS + 4,598 downstream). Any
+  other length is rejected - build it from the canonical transcript's TSS, don't
   truncate by hand.
-- **`expression` needs `options.description`** — a cell-type / assay string
+- **`expression` needs `options.description`** - a cell-type / assay string
   (e.g. `"K562 cells"`).
 
-**Omit `model` and the API uses the task's default** — that is the recommended
+**Omit `model` and the API uses the task's default** - that is the recommended
 call. Default model IDs are intentionally **not** documented here: defaults change
 and retired IDs fail hard, so never hardcode one. To pin a model, or to pick a
-non-human one (Drosophila, yeast, and Arabidopsis models exist for several tasks —
+non-human one (Drosophila, yeast, and Arabidopsis models exist for several tasks  - 
 match the species), discover IDs at call time with `GET /v1/tasks/{task}/models`
 (REST) or `list_models` (MCP). **Never invent a model ID.**
 
@@ -97,13 +98,13 @@ def gi_predict(task, sequence, sequence_name, model=None, options=None):
 out = gi_predict("promoter", seq, "TP53_region")
 print(out["data"]["summary"])
 
-# Expression — exactly 9,198 bp + a cell-type description:
+# Expression - exactly 9,198 bp + a cell-type description:
 out = gi_predict("expression", tss_window_9198bp, "HBB",
                  options={"description": "K562 cells"})
 print(out["data"]["prediction"]["expression_log_tpm"])
 ```
 
-Async (`annotation`) is submit-then-poll — send `Prefer: respond-async`, get a
+Async (`annotation`) is submit-then-poll - send `Prefer: respond-async`, get a
 `job_id`, then poll `GET /v1/tasks/jobs/{job_id}` until it returns `200` (a `202`
 means still running):
 
@@ -136,15 +137,21 @@ Acquire a **sequence handle** (`sequence_ref`), then predict against it, so larg
 sequences never enter the context:
 
 ```
-load_demo_sequence()                      # keyless smoke test -> handle
-fetch_ensembl_sequence(region="TP53")     # gene or region -> handle
+load_demo_sequence(name="promoter_tp53")  # keyless smoke test -> handle; name REQUIRED
+fetch_ensembl_sequence(gene="TP53")       # gene symbol or Ensembl ID -> handle
+fetch_region(region="chr11:5,225,000-5,235,000")   # coordinates -> handle
 fetch_gene_for_expression(gene="HBB")     # TSS-centred 9,198 bp handle
 predict_promoter(sequence_ref=<ref>)      # + predict_splice/_enhancer/_chromatin
 predict_expression(sequence_ref=<ref>, description="K562 cells")
-find_genes_and_predict_expression(region=..., description=...)   # composite
+find_genes(sequence_ref=<ref>)                                   # annotation task
+find_genes_and_predict_expression(sequence_ref=<ref>, description=...)  # composite
 ```
 
-`annotation` is async on MCP too: submit, then `get_job(job_id)` until terminal.
+Note the hosted server exposes 15 tools and has **no** `predict_annotation`: the
+annotation task is `find_genes`, which takes a handle rather than a region and
+runs async internally (`wait=True` by default returns the result; `wait=False`
+returns a `job_id` to poll with `get_job`). There is no `load_local_fasta` on the
+hosted server either; use `store_inline_sequence`.
 Reference context lives in the `gi://models`, `gi://docs/tasks`, and
 `gi://account` MCP resources.
 
@@ -153,13 +160,13 @@ Reference context lives in the `gi://models`, `gi://docs/tasks`, and
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/v1/tasks/{task}/predict` | Run a task (add `Prefer: respond-async` for annotation) |
-| GET | `/v1/tasks/jobs/{job_id}` | Poll an async job (202 running → 200 terminal) |
+| GET | `/v1/tasks/jobs/{job_id}` | Poll an async job (202 running -> 200 terminal) |
 | GET | `/v1/tasks/{task}/models` | List available model IDs for a task |
 
 ## Notes
 
 - Errors: `400` invalid (expression must be exactly 9,198 bp + `description`),
-  `401` missing/invalid key (REST), `413` too long (≤500,000 bp), `429` rate cap
+  `401` missing/invalid key (REST), `413` too long (<=500,000 bp), `429` rate cap
   (back off / ask GI to raise the tier), `5xx` retry.
 - GI is a hosted service; nothing here ships weights or runs local inference.
 
