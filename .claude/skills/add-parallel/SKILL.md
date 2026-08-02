@@ -99,7 +99,7 @@ const parallelApiKey = process.env.PARALLEL_API_KEY;
 if (parallelApiKey) {
   mcpServers['parallel-search'] = {
     type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
-    url: 'https://search-mcp.parallel.ai/mcp',
+    url: 'https://search.parallel.ai/mcp',
     headers: {
       'Authorization': `Bearer ${parallelApiKey}`
     }
@@ -144,7 +144,7 @@ Then add a new section after "## What You Can Do":
 
 You have access to two Parallel AI research tools:
 
-### Quick Web Search (`mcp__parallel-search__search`)
+### Quick Web Search (`mcp__parallel-search__web_search`)
 **When to use:** Freely use for factual lookups, current events, definitions, recent information, or verifying facts.
 
 **Examples:**
