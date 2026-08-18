@@ -47,9 +47,10 @@ export GI_API_KEY="gi_yourkeyhere"     # optional for MCP; required for REST
 
 ## The Six Tasks
 
-All REST tasks share one shape: `POST /v1/tasks/{task}/predict` with body
+Five of the six tasks share one shape: `POST /v1/tasks/{task}/predict` with body
 `{sequence, sequence_name, model?, options?}`, returning a `{data, meta}`
-envelope.
+envelope. `expression` uses the same URL but has its own published operation and
+a stricter body - see the rules below.
 
 | Task | Mode | Length bound | Notes |
 |---|---|---|---|
@@ -57,17 +58,32 @@ envelope.
 | `splice` | sync | 1-500,000 bp | donor/acceptor sites (BigBird) |
 | `enhancer` | sync | 1-500,000 bp | dev + housekeeping (DeepSTARR, *Drosophila*) |
 | `chromatin` | sync | 1-500,000 bp | hundreds of tracks (DeepSEA) |
-| `expression` | sync | **exactly 9,198 bp** | log(TPM+1); needs a cell-type `description` |
+| `expression` | sync | **9,198-500,000 bp** | log(TPM+1); needs `tss_index` unless exactly 9,198 bp, plus a cell-type `description` |
 | `annotation` | **async** | 1-500,000 bp | de-novo transcripts; submit + poll |
 
-Two hard rules the model enforces:
+Three hard rules the API enforces for `expression` (every violation is a `422`;
+nothing is padded, clamped, or truncated, and there is no opt-out flag):
 
-- **`expression` needs exactly 9,198 bp**, centred on the TSS (4,599 upstream +
-  TSS + 4,598 downstream). Any
-  other length is rejected - build it from the canonical transcript's TSS, don't
-  truncate by hand.
-- **`expression` needs `options.description`** - a cell-type / assay string
-  (e.g. `"K562 cells"`).
+- **The model always scores exactly one 9,198 bp TSS-centred window** -
+  `sequence[tss_index-4599 : tss_index+4599]`. The endpoint accepts
+  **9,198-500,000 bp**; below 9,198 bp is a hard `422`.
+- **`tss_index` is required unless the sequence is exactly 9,198 bp.** It is the
+  0-based TSS offset into the **whitespace-stripped** sequence, and must satisfy
+  `4599 <= tss_index <= len(sequence) - 4599`. At exactly 9,198 bp it defaults to
+  4,599 - the only legal value there. Hand over a whole locus (up to 500 kb) plus
+  a `tss_index` and the server cuts the window for you; it does **not** discover
+  the TSS itself, and it does **not** reverse-complement - submit gene-sense.
+- **`options.description`** - a cell-type / assay string (e.g. `"K562 cells"`) -
+  is required, and is the *only* key `expression` accepts inside `options`.
+  Unknown top-level body fields are also rejected.
+
+> Gotcha: the legal `tss_index` range is wide, so a *wrong but in-range* offset
+> (e.g. counted over the raw FASTA including newlines, or relative to a locus
+> start instead of the submitted slice) returns a confident `200` for the wrong
+> window. Always assert on `meta.task_specific_counts.scored_window` (and
+> `.tss_index`) in the response. Note also that `data.input.sequence_length` is
+> the **scored** length (always 9,198); the length you submitted is
+> `data.input.submitted_sequence_length` / `meta.sequence_length`.
 
 **Omit `model` and the API uses the task's default** - that is the recommended
 call. Default model IDs are intentionally **not** documented here: defaults change
@@ -86,22 +102,29 @@ import os, requests
 BASE = os.environ.get("GI_BASE_URL", "https://api.genomicintelligence.ai")
 HEADERS = {"Authorization": f"Bearer {os.environ['GI_API_KEY']}"}
 
-def gi_predict(task, sequence, sequence_name, model=None, options=None):
+def gi_predict(task, sequence, sequence_name, model=None, options=None, tss_index=None):
     body = {"sequence": sequence, "sequence_name": sequence_name}
     if model:   body["model"] = model
     if options: body["options"] = options
+    if tss_index is not None: body["tss_index"] = tss_index   # expression only
     r = requests.post(f"{BASE}/v1/tasks/{task}/predict", headers=HEADERS, json=body)
-    r.raise_for_status()          # 400 invalid; 401 no/bad key; 413 too long; 429 rate limit
+    r.raise_for_status()          # 422 validation; 401 no/bad key; 413 too long; 429 rate limit
     return r.json()               # {"data": {...}, "meta": {...}}
 
 # Promoter:
 out = gi_predict("promoter", seq, "TP53_region")
 print(out["data"]["summary"])
 
-# Expression - exactly 9,198 bp + a cell-type description:
+# Expression - a pre-cut 9,198 bp TSS-centred window (tss_index defaults to 4,599):
 out = gi_predict("expression", tss_window_9198bp, "HBB",
                  options={"description": "K562 cells"})
 print(out["data"]["prediction"]["expression_log_tpm"])
+
+# Expression - a whole locus, server cuts the window around the TSS you name.
+# tss_index is 0-based into the whitespace-stripped sequence.
+out = gi_predict("expression", locus_seq, "HBB", options={"description": "K562 cells"},
+                 tss_index=tss_offset_in_locus)
+print(out["meta"]["task_specific_counts"]["scored_window"])   # verify the right window
 ```
 
 Async (`annotation`) is submit-then-poll - send `Prefer: respond-async`, get a
@@ -126,9 +149,10 @@ transcripts = j.json()["data"]["transcripts"]
 
 You rarely start from a raw sequence. Fetch reference sequence from **Ensembl
 REST** (`rest.ensembl.org`, public, no key) for a gene symbol or region, then
-feed it to GI. For `expression`, build the **exactly 9,198 bp TSS-centred window**
+feed it to GI. For `expression`, either build the **9,198 bp TSS-centred window**
 from the gene's canonical transcript (`expand=1`): 4,599 bp upstream + 4,598 bp
-downstream on the gene's strand. Default species is **human, GRCh38**; use the
+downstream on the gene's strand - or fetch a wider locus and pass the TSS offset
+as `tss_index` and let the server cut it. Default species is **human, GRCh38**; use the
 Ensembl production name for others (`mus_musculus`, `drosophila_melanogaster`).
 
 ## Hosted MCP (keyless, preferred on MCP hosts)
@@ -165,8 +189,9 @@ Reference context lives in the `gi://models`, `gi://docs/tasks`, and
 
 ## Notes
 
-- Errors: `400` invalid (expression must be exactly 9,198 bp + `description`),
-  `401` missing/invalid key (REST), `413` too long (<=500,000 bp), `429` rate cap
+- Errors: `422` validation (expression below 9,198 bp, missing/out-of-range
+  `tss_index`, or missing `options.description`), `401` missing/invalid key
+  (REST), `413` too long (<=500,000 bp), `429` rate cap
   (back off / ask GI to raise the tier), `5xx` retry.
 - GI is a hosted service; nothing here ships weights or runs local inference.
 
