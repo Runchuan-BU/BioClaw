@@ -232,9 +232,9 @@ Reference context lives in the `gi://models`, `gi://docs/tasks`, and
 
 `bio_spec` carries `request_max_bp` (the enforced cap, 500,000 everywhere),
 `context_window_bp` (the sliding window; null for annotation/expression) and
-`trained_window_bp` (9,198 for `g0-expression`). `max_seq_length_bp` is legacy and
-ambiguous - it is 9,198 for `g0-expression` (the trained window, not a cap), so
-prefer `request_max_bp`. There is no `strand_sensitive` flag.
+`trained_window_bp` (9,198 for `g0-expression`). The legacy `max_seq_length_bp`
+was retired in gpu_service `2026.08.19.5` and no longer appears in `bio_spec`;
+`request_max_bp` is the cap. There is no `strand_sensitive` flag.
 
 ## Notes
 
@@ -249,16 +249,16 @@ prefer `request_max_bp`. There is no `strand_sensitive` flag.
   `Retry-After`; ask GI to raise the tier). `5xx` retry.
 - `error.code` is a closed 21-value enum; treat an unlisted value as a generic
   failure, not a parse error. Branch on `code`, never on `details` or `loc`:
-  `details` currently arrives as a bare FastAPI error array even though the
-  schema declares an `{errors: [...]}` object, so read it defensively.
-  `error.request_id` mirrors the `X-Request-Id` header; every response carries
+  `details` matches the declared schema - a validation failure carries
+  `{errors: [{loc, msg, type}, ...]}` - so read it defensively all the same.
+  `error.request_id` mirrors the `X-Request-Id` header and both are always
+  populated; success envelopes carry `meta.request_id`. Every response carries
   `RateLimit-*` headers.
-- Schema-version note: this describes `2026.08.19.4`. Production may still serve
-  `2026.08.18.1` until that build is promoted, where the six literal operations,
-  typed `options`, per-task floors, the published composite, the `Prefer`
-  parameter, the `code` enum and the new `bio_spec` fields are absent. URLs and
-  envelopes are unchanged either way - check `info.version` in
-  `/v1/openapi.json`.
+- Schema-version note: this describes gpu_service `2026.08.19.5`, live on
+  `api.genomicintelligence.ai` - the six literal operations, typed `options`,
+  per-task floors, the published composite, the `Prefer` parameter, the `code`
+  enum and the `bio_spec` fields are all present. Check `info.version` in
+  `/v1/openapi.json` if a detail here does not match.
 - GI is a hosted service; nothing here ships weights or runs local inference.
 
 ## Follow-up Suggestions
