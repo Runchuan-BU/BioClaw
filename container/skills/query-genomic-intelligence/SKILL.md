@@ -26,7 +26,7 @@ Use GI when the user has DNA and wants a model prediction:
 - **enhancer** - developmental & housekeeping enhancer activity (DeepSTARR)
 - **chromatin** - chromatin state across hundreds of tracks (DeepSEA)
 - **expression** - sequence-to-expression, log(TPM+1), with a cell-type context
-- **annotation** - de-novo gene/transcript annotation (async)
+- **annotation** - de-novo gene/transcript annotation (async recommended)
 - **composite** - find the genes in a region and predict each one's expression
 
 Not for local alignment, variant calling, or file I/O - use a local tool
@@ -57,14 +57,16 @@ changes. Body `{sequence, sequence_name?, model?, options?}`, returning a
 `{data, meta}` envelope. `expression` is the strictest: alone among the six it
 requires `options` too - see the rules below.
 
-| Task | Mode | Accepted length | `context_window_bp` | Notes |
+| Task | Recommended mode | Accepted length | `context_window_bp` | Notes |
 |---|---|---|---|---|
 | `promoter` | sync | 300-500,000 bp | 2,000 bp | sliding-window promoter regions |
 | `splice` | sync | 100-500,000 bp | 15,000 bp | donor/acceptor sites (BigBird); strand-specific - feed transcript orientation |
 | `enhancer` | sync | 50-500,000 bp | 249 bp | dev + housekeeping (DeepSTARR, *Drosophila*) |
 | `chromatin` | sync | 200-500,000 bp | 1,000 bp | hundreds of tracks (DeepSEA) |
 | `expression` | sync | **9,198-500,000 bp** | n/a (`trained_window_bp` 9,198) | log(TPM+1); needs `tss_index` unless exactly 9,198 bp, plus a cell-type `description` |
-| `annotation` | **async** | 1,000-500,000 bp | n/a | de-novo transcripts; submit + poll |
+| `annotation` | async | 1,000-500,000 bp | n/a | de-novo transcripts; submit + poll |
+
+`Recommended mode` is guidance, not a constraint — every task accepts both. Omit `Prefer` for a synchronous `200`; send `Prefer: respond-async` for a `202` plus `GET /v1/tasks/jobs/{job_id}`. Only the composite workflow enforces a mode, rejecting sync above 50,000 bp with `413 sync_too_large`.
 
 **The minimum is admission control, not regime.** A request above the floor but
 shorter than the selected model's `bio_spec.context_window_bp` is *accepted and
@@ -163,7 +165,8 @@ print(out["meta"]["task_specific_counts"]["scored_window"])   # verify the right
 `Prefer: respond-async` is a declared header on **all six** predict operations
 and on the composite - a `202` carries the same `{data, meta}` envelope with
 `data = {job_id, status, links}` (job id also in `Content-Location` / `X-Job-Id`).
-Async is JSON-only. `annotation` is the task that needs it: send
+Async is JSON-only and available on every task; `annotation` is the one that
+usually needs it: send
 `Prefer: respond-async`, get a `job_id`, then poll `GET /v1/tasks/jobs/{job_id}`
 until it returns `200` (a `202` means still running):
 
