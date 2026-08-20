@@ -121,6 +121,18 @@ nothing is padded, clamped, or truncated, and there is no opt-out flag):
 > **never** `body.tss_index`. Match on `error.code == "validation_failed"`; never
 > branch on `loc`.
 
+**Splice: submit gene-sense.** Strand-specific, and the wrong strand fails
+silently. Submit transcript orientation, reverse-complementing minus-strand
+genes. A reverse-complemented sequence does *not* return zeros or an empty
+result: it returns plausible sites at different positions, often still at high
+confidence, and the site count can hold or collapse depending on the locus.
+**Neither the score nor the count tells you the orientation was wrong**, so
+there is no post-hoc check - get the orientation right on input. A gene-symbol
+fetch follows the gene's own strand; a coordinate fetch does not, so a
+minus-strand gene pulled by coordinates arrives antisense unless you
+reverse-complement it yourself. `expression` never reverse-complements either;
+`annotation` is strand-insensitive.
+
 **Omit `model` and the API uses the task's default** - that is the recommended
 call. Default model IDs are intentionally **not** documented here: defaults change
 and retired IDs fail hard, so never hardcode one. To pin a model, or to pick a
