@@ -15,7 +15,7 @@ Docs: https://docs.genomicintelligence.ai | REST contract at
 https://api.genomicintelligence.ai/v1/openapi.json | hosted MCP server at
 `https://mcp.genomicintelligence.ai/mcp`.
 
-> For research and development use, **not clinical or diagnostic decisions**.
+> Research and development use. Not for clinical or diagnostic decisions.
 
 ## When to Use
 
@@ -35,8 +35,9 @@ Not for local alignment, variant calling, or file I/O - use a local tool
 ## Access and Authentication
 
 - The **hosted MCP server** (`https://mcp.genomicintelligence.ai/mcp`, Streamable
-  HTTP) works **keyless** against a capped public demo quota - prefer it on hosts
-  that support MCP. An optional `gi_` bearer key raises the quota.
+  HTTP) works **keyless** against a rate- and concurrency-limited public demo
+  tier - prefer it on hosts that support MCP. An optional `gi_` bearer key
+  raises those limits.
 - The **REST `/v1` API requires** a `GI_API_KEY` (a `gi_` bearer), sent as
   `Authorization: Bearer <key>`. Request one at contact@genomicintelligence.ai.
 - **Never hardcode the key.** Read it from the `GI_API_KEY` environment variable.
@@ -66,12 +67,15 @@ requires `options` too - see the rules below.
 | `expression` | sync | **9,198-500,000 bp** | n/a (`trained_window_bp` 9,198) | log(TPM+1); needs `tss_index` unless exactly 9,198 bp, plus a cell-type `description` |
 | `annotation` | async | 1,000-500,000 bp | n/a | de-novo transcripts; submit + poll |
 
-`Recommended mode` is guidance, not a constraint — every task accepts both. Omit `Prefer` for a synchronous `200`; send `Prefer: respond-async` for a `202` plus `GET /v1/tasks/jobs/{job_id}`. Only the composite workflow enforces a mode, rejecting sync above 50,000 bp with `413 sync_too_large`.
+`Recommended mode` is latency guidance, not a constraint - every task accepts
+both. Omit `Prefer` for a synchronous `200`; send `Prefer: respond-async` for a
+`202` plus `GET /v1/tasks/jobs/{job_id}`. Only the composite workflow enforces a
+mode, rejecting sync above 50,000 bp with `413 sync_too_large`.
 
-**The minimum is admission control, not regime.** A request above the floor but
-shorter than the selected model's `bio_spec.context_window_bp` is *accepted and
-scored* - against a window padded out to the context window. Enhancer is the
-sharp case: the bound is 50 bp (DeepSTARR's gate) but the context window is
+**The minimum is admission control, not a scoring regime.** A request above
+the floor but shorter than the selected model's `bio_spec.context_window_bp`
+is *accepted and scored* - against a window padded out to the context window. Enhancer is the
+sharp case: the floor is 50 bp but the context window is
 249 bp, so 50-248 bp is scored mostly on padding. Compare your length against
 `context_window_bp` from `GET /v1/tasks/{task}/models` to know whether the model
 saw real sequence. Longer input is fine - the scanner steps a prediction window
@@ -104,7 +108,7 @@ nothing is padded, clamped, or truncated, and there is no opt-out flag):
   is required, and is the *only* key `expression` accepts inside `options`.
   Unknown top-level body fields are also rejected.
 
-> Gotcha: the legal `tss_index` range is wide, so a *wrong but in-range* offset
+> Trap: the legal `tss_index` range is wide, so a *wrong but in-range* offset
 > (e.g. counted over the raw FASTA including newlines, or relative to a locus
 > start instead of the submitted slice) returns a confident `200` for the wrong
 > window. Always assert on `meta.task_specific_counts.scored_window` (and
@@ -120,13 +124,14 @@ nothing is padded, clamped, or truncated, and there is no opt-out flag):
 **Omit `model` and the API uses the task's default** - that is the recommended
 call. Default model IDs are intentionally **not** documented here: defaults change
 and retired IDs fail hard, so never hardcode one. To pin a model, or to pick a
-non-human one (Drosophila, yeast, and Arabidopsis models exist for several tasks  - 
-match the species), discover IDs at call time with `GET /v1/tasks/{task}/models`
-(REST) or `list_models` (MCP). **Never invent a model ID.**
+non-human one (Drosophila, yeast, and Arabidopsis models exist for several
+tasks - match the species), discover IDs at call time with
+`GET /v1/tasks/{task}/models` (REST) or `list_models` (MCP). **Never invent a
+model ID.**
 
 ## How to Execute (REST)
 
-Sync tasks (promoter, splice, enhancer, chromatin, expression) are one call:
+Called synchronously - no `Prefer` header - a prediction is one request:
 
 ```python
 import os, requests
@@ -232,8 +237,8 @@ Reference context lives in the `gi://models`, `gi://docs/tasks`, and
 
 `bio_spec` carries `request_max_bp` (the enforced cap, 500,000 everywhere),
 `context_window_bp` (the sliding window; null for annotation/expression) and
-`trained_window_bp` (9,198 for `g0-expression`). The legacy `max_seq_length_bp`
-was retired in gpu_service `2026.08.19.5` and no longer appears in `bio_spec`;
+`trained_window_bp` (9,198 for the expression model). The legacy
+`max_seq_length_bp` has been withdrawn and no longer appears in `bio_spec`;
 `request_max_bp` is the cap. There is no `strand_sensitive` flag.
 
 ## Notes
@@ -254,11 +259,11 @@ was retired in gpu_service `2026.08.19.5` and no longer appears in `bio_spec`;
   `error.request_id` mirrors the `X-Request-Id` header and both are always
   populated; success envelopes carry `meta.request_id`. Every response carries
   `RateLimit-*` headers.
-- Schema-version note: this describes gpu_service `2026.08.19.5`, live on
-  `api.genomicintelligence.ai` - the six literal operations, typed `options`,
-  per-task floors, the published composite, the `Prefer` parameter, the `code`
-  enum and the `bio_spec` fields are all present. Check `info.version` in
-  `/v1/openapi.json` if a detail here does not match.
+- The API serves the six literal predict operations, typed `options`, per-task
+  floors, the published composite, the `Prefer` parameter, the `code` enum and
+  the `bio_spec` fields described here. The served schema at
+  https://api.genomicintelligence.ai/v1/openapi.json is the authority; check it
+  if a detail here does not match.
 - GI is a hosted service; nothing here ships weights or runs local inference.
 
 ## Follow-up Suggestions
