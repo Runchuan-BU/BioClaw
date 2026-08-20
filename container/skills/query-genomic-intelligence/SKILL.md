@@ -133,6 +133,13 @@ minus-strand gene pulled by coordinates arrives antisense unless you
 reverse-complement it yourself. `expression` never reverse-complements either;
 `annotation` is strand-insensitive.
 
+**A splice coordinate is a token span, not a junction.** Each site's
+`start`/`end` bounds one variable-width tokenizer token - 4-10 bp across the
+sequences measured so far - reported with a `token_index`. The exon/intron
+junction sits somewhere inside that span, so do not reduce the pair to a single
+base position, and do not intersect it against reference annotation as though it
+marked a boundary.
+
 **Omit `model` and the API uses the task's default** - that is the recommended
 call. Default model IDs are intentionally **not** documented here: defaults change
 and retired IDs fail hard, so never hardcode one. To pin a model, or to pick a
