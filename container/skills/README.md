@@ -13,6 +13,7 @@ Anything the WhatsApp / WeCom / Discord / local-web agent should use belongs **h
 | `sds-gel-review/` | SDS gel image review |
 | `query-*` | Database / API usage (Ensembl, UniProt, KEGG, …) |
 | `blast-search/`, `pubmed-search/`, `sequence-analysis/` | Literature & sequence workflows |
+| `web-search/` | General web search via the keyless You.com MCP endpoint (news, preprints, docs) |
 | `bio-manuscript-*` | Community-contributed manuscript planning pipeline for idea screening, figure planning, manuscript drafting, refinement, and implementation blueprints |
 | `bio-manuscript-common/` | Shared templates and helper scripts used by the manuscript pipeline skill family |
 
