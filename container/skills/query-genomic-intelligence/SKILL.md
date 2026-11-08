@@ -64,7 +64,7 @@ requires `options` too - see the rules below.
 | `splice` | sync | 100-500,000 bp | 15,000 bp | donor/acceptor sites (BigBird); strand-specific - feed transcript orientation |
 | `enhancer` | sync | 50-500,000 bp | 249 bp | dev + housekeeping (DeepSTARR, *Drosophila*) |
 | `chromatin` | sync | 200-500,000 bp | 1,000 bp | hundreds of tracks (DeepSEA) |
-| `expression` | sync | **9,198-500,000 bp** | n/a (`trained_window_bp` 9,198) | log(TPM+1); needs `tss_index` unless exactly 9,198 bp, plus a cell-type `description` |
+| `expression` | sync | **9,198-500,000 bp**, TSS at least 4,599 bp from each end | n/a (fetch `bio_spec.recommended_flank_bp` per side) | log(TPM+1); needs `tss_index` unless exactly 9,198 bp, plus a cell-type `description` |
 | `annotation` | async | 1,000-500,000 bp | n/a | de-novo transcripts; submit + poll |
 
 `Recommended mode` is latency guidance, not a constraint - every task accepts
@@ -95,9 +95,16 @@ unknown key is a hard `422` (`type: "extra_forbidden"`), never ignored: promoter
 Three hard rules the API enforces for `expression` (every violation is a `422`;
 nothing is padded, clamped, or truncated, and there is no opt-out flag):
 
-- **The model always scores exactly one 9,198 bp TSS-centred window** -
-  `sequence[tss_index-4599 : tss_index+4599]`. The endpoint accepts
-  **9,198-500,000 bp**; below 9,198 bp is a hard `422`.
+- **One admission rule for every expression model; how much each reads
+  differs.** The endpoint accepts **9,198-500,000 bp** with the TSS at least
+  4,599 bp from each end; below 9,198 bp is a hard `422`. What the model reads
+  around `tss_index` is per model: a fixed-window model reads only
+  `sequence[tss_index-4599 : tss_index+4599]`, a long-context model reads tens
+  of kb on each side. Each model's `bio_spec.recommended_flank_bp` (from
+  `GET /v1/tasks/expression/models`) says how much to supply on each side of
+  the TSS. A bare 9,198 bp window is accepted by every model but starves a
+  long-context one with no warning, so size the input from the model list
+  (see Sequence Acquisition).
 - **`tss_index` is required unless the sequence is exactly 9,198 bp.** It is the
   0-based TSS offset into the **whitespace-stripped** sequence, and must satisfy
   `4599 <= tss_index <= len(sequence) - 4599`. At exactly 9,198 bp it defaults to
@@ -112,9 +119,11 @@ nothing is padded, clamped, or truncated, and there is no opt-out flag):
 > (e.g. counted over the raw FASTA including newlines, or relative to a locus
 > start instead of the submitted slice) returns a confident `200` for the wrong
 > window. Always assert on `meta.task_specific_counts.scored_window` (and
-> `.tss_index`) in the response. Note also that `data.input.sequence_length` is
-> the **scored** length (always 9,198); the length you submitted is
-> `data.input.submitted_sequence_length` / `meta.sequence_length`.
+> `.tss_index`) in the response: `scored_window` contains `tss_index`, and its
+> width is how much the model read (9,198 for a fixed-window model, wider and
+> sequence-dependent for a long-context one). The length you submitted is
+> `meta.sequence_length`; `data.input` echoes only `sequence_name`,
+> `description` and `tss_index`.
 >
 > Both `tss_index` failures - "required unless exactly 9,198 bp" and the range
 > check - come from a whole-model validator, so they report at `loc: ["body"]`,
@@ -174,16 +183,14 @@ def gi_predict(task, sequence, sequence_name, model=None, options=None, tss_inde
 out = gi_predict("promoter", seq, "TP53_region")
 print(out["data"]["summary"])
 
-# Expression - a pre-cut 9,198 bp TSS-centred window (tss_index defaults to 4,599):
-out = gi_predict("expression", tss_window_9198bp, "HBB",
-                 options={"description": "K562 cells"})
-print(out["data"]["prediction"]["expression_log_tpm"])
-
-# Expression - a whole locus, server cuts the window around the TSS you name.
+# Expression - gene-sense sequence with F bp each side of the TSS, F read from
+# the model list (Sequence Acquisition), so the TSS sits at offset F.
 # tss_index is 0-based into the whitespace-stripped sequence.
 out = gi_predict("expression", locus_seq, "HBB", options={"description": "K562 cells"},
-                 tss_index=tss_offset_in_locus)
-print(out["meta"]["task_specific_counts"]["scored_window"])   # verify the right window
+                 tss_index=F)
+lo, hi = out["meta"]["task_specific_counts"]["scored_window"]
+assert lo <= F < hi                     # the window holds your TSS; width = bp read
+print(out["data"]["prediction"]["expression_log_tpm"])
 ```
 
 `Prefer: respond-async` is a declared header on **all six** predict operations
@@ -212,10 +219,32 @@ transcripts = j.json()["data"]["transcripts"]
 
 You rarely start from a raw sequence. Fetch reference sequence from **Ensembl
 REST** (`rest.ensembl.org`, public, no key) for a gene symbol or region, then
-feed it to GI. For `expression`, either build the **9,198 bp TSS-centred window**
-from the gene's canonical transcript (`expand=1`): 4,599 bp upstream + 4,598 bp
-downstream on the gene's strand - or fetch a wider locus and pass the TSS offset
-as `tss_index` and let the server cut it. Default species is **human, GRCh38**; use the
+feed it to GI. For `expression`, size the flank from the model list, never from
+a fixed number - new, longer-window models are added and become the default:
+
+```python
+def expression_flank():
+    """F: the largest listed recommended_flank_bp, >= 4599, 2F <= request_max_bp."""
+    r = requests.get(f"{BASE}/v1/tasks/expression/models", timeout=30)   # public
+    r.raise_for_status()
+    specs = [m.get("bio_spec") or {} for m in r.json()["models"]]
+    flank = max([4599] + [s["recommended_flank_bp"] for s in specs if s.get("recommended_flank_bp")])
+    caps = [s["request_max_bp"] for s in specs if s.get("request_max_bp")]
+    return max(4599, min([flank] + [c // 2 for c in caps]))
+
+def expression_region(tss, strand, flank):
+    """1-based inclusive Ensembl bounds putting the gene-sense TSS at offset `flank`."""
+    return (tss - flank, tss + flank - 1) if strand == 1 else (tss - flank + 1, tss + flank)
+```
+
+Take the TSS from the gene's canonical transcript (`expand=1`; transcript start
+on `+`, transcript end on `-`, never the gene body), fetch
+`/sequence/region/{species}/{chr}:{start}..{end}:{strand}` with the gene's own
+strand so the bases come back gene-sense, check the length is exactly 2F, and
+send `tss_index=F`. Fetching the plus-strand range on a minus-strand gene puts
+the TSS at F-1, still in range, so it returns a confident wrong answer. Near a
+chromosome end use the largest symmetric F that fits, down to 4,599, and say so.
+Default species is **human, GRCh38**; use the
 Ensembl production name for others (`mus_musculus`, `drosophila_melanogaster`).
 Fetch at least the task floor (promoter 300, splice 100, enhancer 50, chromatin
 200, annotation 1,000 bp) - and ideally at least the model's `context_window_bp`,
@@ -230,7 +259,7 @@ sequences never enter the context:
 load_demo_sequence(name="promoter_tp53")  # keyless smoke test -> handle; name REQUIRED
 fetch_ensembl_sequence(gene="TP53")       # gene symbol or Ensembl ID -> handle
 fetch_region(region="chr11:5,225,000-5,235,000")   # coordinates -> handle
-fetch_gene_for_expression(gene="HBB")     # TSS-centred 9,198 bp handle
+fetch_gene_for_expression(gene="HBB")     # TSS-centred handle, flank sized from list_models; records tss_index
 predict_promoter(sequence_ref=<ref>)      # + predict_splice/_enhancer/_chromatin
 predict_expression(sequence_ref=<ref>, description="K562 cells")
 find_genes(sequence_ref=<ref>)                                   # annotation task
@@ -252,11 +281,13 @@ Reference context lives in the `gi://models`, `gi://docs/tasks`, and
 | POST | `/v1/tasks/<task>/predict` | Six literal paths, one per task (add `Prefer: respond-async` for annotation). An unrecognised task is `404 not_found`, not a 422 |
 | POST | `/v1/workflows/find-genes-and-predict-expression` | Composite (see below) |
 | GET | `/v1/tasks/jobs` · `/v1/tasks/jobs/{job_id}` | List / poll async jobs (202 running -> 200 terminal) |
-| GET | `/v1/tasks/{task}/models` | Model IDs + `bio_spec` for a task. Needs a key, and returns a **flat** `{task, default_model, models}` - not the `{data, meta}` envelope |
+| GET | `/v1/tasks/{task}/models` | Model IDs + `bio_spec` for a task. Public (no key, rate-limited by IP), and returns a **flat** `{task, default_model, models}` - not the `{data, meta}` envelope |
 
 `bio_spec` carries `request_max_bp` (the enforced cap, 500,000 everywhere),
 `context_window_bp` (the sliding window; null for annotation/expression) and
-`trained_window_bp` (9,198 for the expression model). The legacy
+`trained_window_bp` (9,198 for a fixed-window expression model, null for a
+long-context one), and for expression models `recommended_flank_bp` (bp to
+supply on each side of the TSS; fetch the largest listed). The legacy
 `max_seq_length_bp` has been withdrawn and no longer appears in `bio_spec`;
 `request_max_bp` is the cap. There is no `strand_sensitive` flag.
 
@@ -292,8 +323,11 @@ Reference context lives in the `gi://models`, `gi://docs/tasks`, and
   `find_genes_and_predict_expression` (MCP). `sequence` 1,000-500,000 bp and
   `options` are required, and `options.description` (cell type / assay) is
   required too - a missing or empty value is a `422`. It cuts a TSS-centred
-  9,198 bp window per discovered gene (padding with `N` at region edges rather
-  than dropping a gene) and returns a prediction each;
+  input per discovered gene sized for the chosen expression model (up to its
+  `recommended_flank_bp` each side, clamped to what the region holds; a
+  fixed-window model's cut is `N`-padded at region edges rather than dropping a
+  gene) and returns a prediction each - pass a wider region to give a
+  long-context model more to read;
   `meta.task_specific_counts` = `{genes_found, genes_predicted, genes_skipped}`,
   per-gene causes in `data.expression_predictions[].skip_reason`. Above
   **50,000 bp** a synchronous call is `413 sync_too_large` - retry the same body
